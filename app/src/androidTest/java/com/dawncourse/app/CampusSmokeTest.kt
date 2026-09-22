@@ -59,6 +59,21 @@ class CampusSmokeTest {
             android.os.SystemClock.sleep(500)
             device.executeShellCommand("screencap -p /sdcard/Download/qlu-$name")
         }
+        fun assertPhotoDiffersFromOpaque(photo: android.graphics.Bitmap, opaque: android.graphics.Bitmap,
+            top: Int, bottom: Int, label: String, minimumDifference: Double = 15.0) {
+            var difference = 0L
+            var samples = 0
+            for (y in top.coerceAtLeast(0) until bottom.coerceAtMost(photo.height) step 9) {
+                for (x in photo.width / 10 until photo.width * 9 / 10 step 9) {
+                    val a = photo.getPixel(x, y); val b = opaque.getPixel(x, y)
+                    difference += kotlin.math.abs(android.graphics.Color.red(a) - android.graphics.Color.red(b)) +
+                        kotlin.math.abs(android.graphics.Color.green(a) - android.graphics.Color.green(b)) +
+                        kotlin.math.abs(android.graphics.Color.blue(a) - android.graphics.Color.blue(b))
+                    samples++
+                }
+            }
+            assertTrue("$label 像素应有可见差异", samples > 0 && difference.toDouble() / samples / 3 > minimumDifference)
+        }
         fun assertDisabledButton(text: String) {
             // Compose 的文字子节点可能仍标记 enabled；禁用语义在按钮父节点上。
             val node = requireNotNull(device.findObject(By.text(text)))
@@ -209,26 +224,72 @@ class CampusSmokeTest {
                 }
                 android.os.SystemClock.sleep(600)
                 assertNotNull(device.findObject(By.text("高分子材料科学与工程基础")))
-                shot("028-style-${style.name.lowercase()}.png")
+                shot("029-style-${style.name.lowercase()}.png")
             }
+            runBlocking { settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(adaptiveCourseColors = false)) }
+            shot("029-wakeup-pastel.png")
+            runBlocking { settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(courseBorders = true)) }
+            shot("029-wakeup-borders.png")
             runBlocking {
                 settings.setWallpaperUri(android.net.Uri.fromFile(source).toString())
+                // Match the wallpaper picker ViewModel, which also prepares the blur cache.
+                settings.generateBlurredWallpaper(settings.settings.first().wallpaperUri)
+                assertNotNull(settings.settings.first().blurredWallpaperUri)
                 settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(
                     style = com.dawncourse.core.domain.model.CampusStyle.SAGE, glassOpacity = .4f,
                     wallpaperOnHeader = true, wallpaperOnNavigation = true, wallpaperOnCourses = true,
-                    wallpaperOnPanels = true, adaptiveCourseColors = true))
+                    wallpaperOnPanels = true, adaptiveCourseColors = true, courseBorders = false))
             }
             android.os.SystemClock.sleep(1200)
-            shot("028-background-all-areas.png")
+            shot("029-background-all-areas.png")
+            val headerBounds = requireNotNull(device.findObject(By.desc("设置"))).visibleBounds
+            val navBounds = device.findObjects(By.text("课表")).last().visibleBounds
+            val photoBars = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            runBlocking { settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(barWallpaperOpacity = 1f)) }
+            android.os.SystemClock.sleep(700)
+            val opaqueBars = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            assertPhotoDiffersFromOpaque(photoBars, opaqueBars, headerBounds.top, headerBounds.bottom, "顶栏")
+            assertPhotoDiffersFromOpaque(photoBars, opaqueBars, navBounds.top - 55, navBounds.bottom, "导航栏")
+            photoBars.recycle(); opaqueBars.recycle()
+            runBlocking { settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(barWallpaperOpacity = .18f)) }
             device.wait(Until.findObject(By.desc("设置")), 10000).click()
             scrollTo(By.textStartsWith("云雾蓝")).click()
             android.os.SystemClock.sleep(400)
             assertEquals(com.dawncourse.core.domain.model.CampusStyle.MIST, runBlocking { settings.settings.first().campusAppearance.style })
-            shot("028-style-settings.png")
+            scrollTo(By.textStartsWith("Wake Up")).click()
+            android.os.SystemClock.sleep(400)
+            assertEquals(com.dawncourse.core.domain.model.CampusStyle.WAKE_UP, runBlocking { settings.settings.first().campusAppearance.style })
+            shot("029-style-settings.png")
             val appearanceToggles = listOf("课表顶栏与日期栏", "底部导航栏", "课程卡片", "设置与查询面板", "课程颜色适应背景")
             fun checkedNode(node: androidx.test.uiautomator.UiObject2) =
                 generateSequence(node) { it.parent }.firstOrNull { it.isCheckable }
                     ?: requireNotNull(node.findObject(By.checkable(true)))
+            listOf("课程边缘线", "栏位与面板毛玻璃").forEach { label ->
+                val toggle = scrollTo(By.desc(label))
+                assertFalse("$label 默认关闭", checkedNode(toggle).isChecked)
+                toggle.click()
+                android.os.SystemClock.sleep(250)
+                assertTrue(checkedNode(requireNotNull(device.findObject(By.desc(label)))).isChecked)
+            }
+            val extras = runBlocking { com.dawncourse.core.data.repository.SettingsRepositoryImpl(context).settings.first().campusAppearance }
+            assertTrue(extras.courseBorders && extras.barWallpaperBlur)
+            assertEquals(.18f, extras.barWallpaperOpacity, .001f)
+            // A panel must reveal the wallpaper at low tint, regardless of its blur choice.
+            scrollTo(By.desc("设置与查询面板"))
+            shot("029-panel-blurred.png")
+            val blurredPanel = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            runBlocking { settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(barWallpaperBlur = false)) }
+            android.os.SystemClock.sleep(700)
+            shot("029-panel-photo.png")
+            val photoPanel = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            assertPhotoDiffersFromOpaque(photoPanel, blurredPanel, device.displayHeight / 3, device.displayHeight * 2 / 3, "毛玻璃开关", 3.0)
+            blurredPanel.recycle()
+            runBlocking { settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(barWallpaperOpacity = 1f)) }
+            android.os.SystemClock.sleep(700)
+            val opaquePanel = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            assertPhotoDiffersFromOpaque(photoPanel, opaquePanel, device.displayHeight / 3, device.displayHeight * 2 / 3, "设置面板")
+            photoPanel.recycle(); opaquePanel.recycle()
+            runBlocking { settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(barWallpaperOpacity = .18f, barWallpaperBlur = false)) }
             appearanceToggles.forEach { label ->
                 val toggle = scrollTo(By.desc(label))
                 assertTrue("$label 应开启", checkedNode(toggle).isChecked)
@@ -244,7 +305,7 @@ class CampusSmokeTest {
             device.pressBack()
             runBlocking { settings.setThemeMode(com.dawncourse.core.domain.model.AppThemeMode.DARK) }
             android.os.SystemClock.sleep(600)
-            shot("028-background-dark.png")
+            shot("029-background-dark.png")
             runBlocking {
                 settings.setThemeMode(com.dawncourse.core.domain.model.AppThemeMode.LIGHT)
                 settings.setCampusAppearance(com.dawncourse.core.domain.model.CampusAppearance())

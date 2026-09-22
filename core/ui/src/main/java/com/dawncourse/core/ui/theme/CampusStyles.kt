@@ -15,8 +15,13 @@ fun campusStyleColors(style: CampusStyle): CampusStyleColors = when (style) {
     CampusStyle.SAGE -> CampusStyleColors(Color(0xFF597568), listOf(0xFFCDDFCF, 0xFFDFDEC5, 0xFFC7DDDF, 0xFFE8D6CE, 0xFFD8D1E1, 0xFFE3DECf))
     CampusStyle.CREAM -> CampusStyleColors(Color(0xFF8A6950), listOf(0xFFEAD6BE, 0xFFE9CECC, 0xFFDADDBF, 0xFFC9DCDE, 0xFFDCD1E3, 0xFFDFD8CA))
     CampusStyle.LILAC -> CampusStyleColors(Color(0xFF78658C), listOf(0xFFDBD0EA, 0xFFE6D0DB, 0xFFC9D9E7, 0xFFCEDFD7, 0xFFE8DBC5, 0xFFDED2CC))
+    CampusStyle.WAKE_UP -> CampusStyleColors(Color(0xFF657C9F), listOf(0xFFE781A2, 0xFF87ADEF, 0xFFE8B76F, 0xFF719CC6, 0xFFB6A0E9, 0xFFE58E79))
     CampusStyle.CLASSIC -> CampusStyleColors(Color(0xFF6750A4), listOf(0xFFE8DEF8, 0xFFC4E7FF, 0xFFC3EED0, 0xFFFDE2E4, 0xFFFFF4DE, 0xFFD7E8CD))
 }.let { it }
+
+fun wakeUpBackground(dark: Boolean): List<Color> = if (dark)
+    listOf(Color(0xFF252938), Color(0xFF1B2A3C))
+else listOf(Color(0xFFE3E5F1), Color(0xFFBFCFDF))
 
 private fun CampusStyleColors(seed: Color, values: List<Long>): CampusStyleColors =
     CampusStyleColors(seed, values.map { Color(it) })

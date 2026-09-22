@@ -4,8 +4,6 @@ package com.dawncourse.core.ui.components
 import androidx.core.graphics.drawable.toBitmap
 import coil.imageLoader
 import coil.request.ImageRequest
-import android.graphics.BitmapFactory
-import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
@@ -21,7 +19,10 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.*
 import com.dawncourse.core.domain.model.WallpaperMode
+import com.dawncourse.core.domain.model.CampusAppearance
+import com.dawncourse.core.domain.model.CampusStyle
 import com.dawncourse.core.ui.theme.LocalAppSettings
+import com.dawncourse.core.ui.theme.wakeUpBackground
 import com.dawncourse.core.ui.util.ReadableColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -55,6 +56,10 @@ private fun DrawScope.paintWallpaper(image: ImageBitmap, area: IntSize, offset: 
     drawRect(Color.Black.copy(alpha = (1f - brightness).coerceIn(0f, 1f)))
 }
 
+private fun DrawScope.paintWakeUp(colors: List<Color>, area: IntSize, offset: Offset = Offset.Zero) {
+    drawRect(Brush.verticalGradient(colors, startY = -offset.y, endY = maxOf(1f, area.height.toFloat()) - offset.y))
+}
+
 @Composable
 fun CampusBackdrop(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     val settings = LocalAppSettings.current
@@ -63,9 +68,12 @@ fun CampusBackdrop(modifier: Modifier = Modifier, content: @Composable BoxScope.
     var area by remember { mutableStateOf(IntSize.Zero) }
     var origin by remember { mutableStateOf(Offset.Zero) }
     val surface = MaterialTheme.colorScheme.background
+    val wakeUp = if (settings.campusAppearance.style == CampusStyle.WAKE_UP)
+        wakeUpBackground(ReadableColors.luminance(surface) < .2) else null
     CompositionLocalProvider(LocalBackdrop provides Backdrop(image, blurred, area, origin)) {
         Box(modifier.onGloballyPositioned { area = it.size; origin = it.positionInRoot() }.drawWithContent {
             drawRect(surface)
+            if (image == null && wakeUp != null) paintWakeUp(wakeUp, area)
             image?.let { paintWallpaper(it, area, Offset.Zero, settings.wallpaperMode, settings.backgroundBrightness) }
             if (image != null) drawRect(surface.copy(alpha = settings.transparency))
             drawContent()
@@ -74,6 +82,15 @@ fun CampusBackdrop(modifier: Modifier = Modifier, content: @Composable BoxScope.
 }
 
 enum class WallpaperArea { HEADER, NAVIGATION, COURSE, PANEL }
+
+data class WallpaperSurfacePolicy(val blur: Boolean, val opacity: Float)
+
+/** Outside courses, photo visibility is controlled independently from course readability. */
+fun wallpaperSurfacePolicy(appearance: CampusAppearance, area: WallpaperArea, courseOpacity: Float? = null): WallpaperSurfacePolicy =
+    if (area == WallpaperArea.COURSE) WallpaperSurfacePolicy(appearance.glassEnabled && appearance.glassRadius > 0,
+        (courseOpacity ?: appearance.glassOpacity).coerceIn(0f, 1f))
+    else WallpaperSurfacePolicy(appearance.barWallpaperBlur && appearance.glassRadius > 0,
+        appearance.barWallpaperOpacity.coerceIn(0f, 1f))
 
 fun Modifier.glassSurface(shape: Shape = RectangleShape, tint: Color = Color.Unspecified, forceOpaque: Boolean = false,
     area: WallpaperArea = WallpaperArea.PANEL, opacity: Float? = null): Modifier = composed {
@@ -87,21 +104,20 @@ fun Modifier.glassSurface(shape: Shape = RectangleShape, tint: Color = Color.Uns
         WallpaperArea.COURSE -> appearance.wallpaperOnCourses
         WallpaperArea.PANEL -> appearance.wallpaperOnPanels
     }
-    // Bar labels/icons keep the theme's foreground; protect them even over a busy image.
-    val minimumOverlay = if (area != WallpaperArea.COURSE) maxOf(
-        ReadableColors.safeOpacity(overlay, MaterialTheme.colorScheme.onSurface, .4f),
-        ReadableColors.safeOpacity(overlay, MaterialTheme.colorScheme.onSurfaceVariant, .4f),
-        ReadableColors.safeOpacity(overlay, MaterialTheme.colorScheme.primary, .4f)
-    ) else 0f
-    val overlayOpacity = maxOf(opacity ?: appearance.glassOpacity, minimumOverlay).coerceIn(0f, 1f)
+    val policy = wallpaperSurfacePolicy(appearance, area, opacity)
+    val wakeUp = if (appearance.style == CampusStyle.WAKE_UP && area != WallpaperArea.COURSE)
+        wakeUpBackground(ReadableColors.luminance(MaterialTheme.colorScheme.background) < .2) else null
     var position by remember { mutableStateOf(Offset.Zero) }
     clip(shape).onGloballyPositioned { position = it.positionInRoot() - backdrop.origin }.drawWithContent {
-        val extended = selected && !forceOpaque && backdrop.image != null
-        if (extended) (if (appearance.glassEnabled && appearance.glassRadius > 0) backdrop.blurred ?: backdrop.image else backdrop.image)?.let {
-            paintWallpaper(it, backdrop.size, position, settings.wallpaperMode, settings.backgroundBrightness)
-            drawRect(overlay.copy(alpha = settings.transparency))
+        val extended = selected && !forceOpaque && (backdrop.image != null || wakeUp != null)
+        if (extended) {
+            val image = if (policy.blur) backdrop.blurred ?: backdrop.image else backdrop.image
+            if (image != null) paintWallpaper(image, backdrop.size, position, settings.wallpaperMode, settings.backgroundBrightness)
+            else if (wakeUp != null) paintWakeUp(wakeUp, backdrop.size, position)
         }
-        drawRect(overlay.copy(alpha = if (extended) overlayOpacity else 1f))
+        // Paint the source once and one user-controlled tint. The root's tint is not
+        // applied again here: stacking it with the card tint used to erase the photo.
+        drawRect(overlay.copy(alpha = if (extended) policy.opacity else 1f))
         drawContent()
     }
 }

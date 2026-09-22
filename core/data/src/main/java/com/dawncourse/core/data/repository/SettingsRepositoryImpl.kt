@@ -73,6 +73,9 @@ class SettingsRepositoryImpl @Inject constructor(
         val WALLPAPER_COURSES = booleanPreferencesKey("campus_wallpaper_courses")
         val ADAPTIVE_COURSES = booleanPreferencesKey("campus_adaptive_courses")
         val WALLPAPER_PANELS = booleanPreferencesKey("campus_wallpaper_panels")
+        val COURSE_BORDERS = booleanPreferencesKey("campus_course_borders")
+        val BAR_WALLPAPER_BLUR = booleanPreferencesKey("campus_bar_wallpaper_blur")
+        val BAR_WALLPAPER_OPACITY = floatPreferencesKey("campus_bar_wallpaper_opacity")
         val HIDE_NOTICE = booleanPreferencesKey("campus_hide_notice")
         /** 是否启用动态取色 */
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
@@ -263,7 +266,10 @@ class SettingsRepositoryImpl @Inject constructor(
                 wallpaperOnNavigation = preferences[PreferencesKeys.WALLPAPER_NAVIGATION] ?: false,
                 wallpaperOnCourses = preferences[PreferencesKeys.WALLPAPER_COURSES] ?: true,
                 adaptiveCourseColors = preferences[PreferencesKeys.ADAPTIVE_COURSES] ?: true,
-                wallpaperOnPanels = preferences[PreferencesKeys.WALLPAPER_PANELS] ?: true),
+                wallpaperOnPanels = preferences[PreferencesKeys.WALLPAPER_PANELS] ?: true,
+                courseBorders = preferences[PreferencesKeys.COURSE_BORDERS] ?: false,
+                barWallpaperBlur = preferences[PreferencesKeys.BAR_WALLPAPER_BLUR] ?: false,
+                barWallpaperOpacity = preferences[PreferencesKeys.BAR_WALLPAPER_OPACITY] ?: .18f),
             hideWelcomeNotice = preferences[PreferencesKeys.HIDE_NOTICE] ?: false,
             transparency = transparency,
             fontStyle = fontStyle,
@@ -318,6 +324,9 @@ class SettingsRepositoryImpl @Inject constructor(
         this[PreferencesKeys.WALLPAPER_COURSES] = value.wallpaperOnCourses
         this[PreferencesKeys.ADAPTIVE_COURSES] = value.adaptiveCourseColors
         this[PreferencesKeys.WALLPAPER_PANELS] = value.wallpaperOnPanels
+        this[PreferencesKeys.COURSE_BORDERS] = value.courseBorders
+        this[PreferencesKeys.BAR_WALLPAPER_BLUR] = value.barWallpaperBlur
+        this[PreferencesKeys.BAR_WALLPAPER_OPACITY] = value.barWallpaperOpacity.coerceIn(0f, 1f)
     }
     override suspend fun setCampusAppearance(value: com.dawncourse.core.domain.model.CampusAppearance) {
         val previous = settings.first().campusAppearance

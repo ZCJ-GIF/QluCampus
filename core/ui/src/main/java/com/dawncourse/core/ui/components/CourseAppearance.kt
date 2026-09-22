@@ -16,15 +16,23 @@ import com.dawncourse.core.ui.util.ReadableColors
 
 data class CourseSurfaceColors(val background: Color, val foreground: Color, val opacity: Float, val outlined: Boolean)
 
-fun readableCourseSurface(base: Color, wallpaper: Color?, adaptive: Boolean, requestedOpacity: Float): CourseSurfaceColors {
-    val color = if (adaptive && wallpaper != null) {
+fun readableCourseSurface(base: Color, wallpaper: Color?, adaptive: Boolean, requestedOpacity: Float,
+    outlined: Boolean = false, preferWhiteText: Boolean = false): CourseSurfaceColors {
+    var color = if (adaptive && wallpaper != null) {
         val harmonized = ReadableColors.mix(base, wallpaper, .08f)
         ReadableColors.mix(harmonized, if (ReadableColors.luminance(wallpaper) > .55) Color(0xFF263238) else Color.White, .12f)
     } else base
-    val foreground = ReadableColors.bestText(color)
+    // Wake Up uses white lettering. Adaptive mode deepens its pastel hue only as much
+    // as needed to keep that lettering readable; it never writes a course's saved color.
+    if (preferWhiteText && adaptive && ReadableColors.contrast(Color.White, color) < 4.5) {
+        val original = color
+        color = (0..100).map { ReadableColors.mix(original, Color.Black, it / 100f) }
+            .first { ReadableColors.contrast(Color.White, it) >= 4.5 }
+    }
+    val foreground = if (preferWhiteText) Color.White else ReadableColors.bestText(color)
     return CourseSurfaceColors(color, foreground,
         if (adaptive) ReadableColors.safeOpacity(color, foreground, requestedOpacity) else requestedOpacity,
-        adaptive)
+        outlined)
 }
 
 @Composable
@@ -42,7 +50,9 @@ fun rememberCourseSurface(course: Course, current: Boolean): CourseSurfaceColors
             base = colors[Math.floorMod(CourseColorUtils.key(course).hashCode(), colors.size)]
             if (ReadableColors.luminance(surface) < .2) base = ReadableColors.mix(base, surface, .55f)
         }
-        if (preserve) CourseSurfaceColors(base, ReadableColors.bestText(base), 1f, false)
-        else readableCourseSurface(base, seed, appearance.adaptiveCourseColors, appearance.glassOpacity)
+        if (preserve) CourseSurfaceColors(base, ReadableColors.bestText(base), 1f, appearance.courseBorders)
+        else readableCourseSurface(base, seed, appearance.adaptiveCourseColors, appearance.glassOpacity,
+            outlined = appearance.courseBorders,
+            preferWhiteText = appearance.style == CampusStyle.WAKE_UP && course.color.isBlank())
     }
 }

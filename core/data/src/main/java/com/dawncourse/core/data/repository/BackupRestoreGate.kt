@@ -212,7 +212,7 @@ internal object BackupPayloadValidator {
         settings.themeMode.name
         settings.campusAppearance.style.name
         require(settings.campusAppearance.fontScale.isFinite() && settings.campusAppearance.glassRadius.isFinite() &&
-            settings.campusAppearance.glassOpacity.isFinite()) { "外观数值无效" }
+            settings.campusAppearance.glassOpacity.isFinite() && settings.campusAppearance.barWallpaperOpacity.isFinite()) { "外观数值无效" }
         settings.webDavAutoSyncMode.name
         settings.webDavAutoSyncIntervalUnit.name
         settings.dividerColor.length

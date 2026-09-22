@@ -24,13 +24,17 @@ class BackupRestoreGateTest {
         assertEquals(com.dawncourse.core.domain.model.CampusStyle.CLASSIC, settings.campusAppearance.style)
         assertTrue(settings.campusAppearance.adaptiveCourseColors)
         assertFalse(settings.campusAppearance.wallpaperOnNavigation)
+        assertFalse(settings.campusAppearance.courseBorders)
+        assertFalse(settings.campusAppearance.barWallpaperBlur)
+        assertEquals(.18f, settings.campusAppearance.barWallpaperOpacity, .001f)
         assertEquals(1.2f, settings.campusAppearance.fontScale, .001f)
     }
 
     @Test fun appearanceSettingsRoundTripThroughBackup() {
         val expected = AppSettings(campusAppearance = com.dawncourse.core.domain.model.CampusAppearance(
-            style = com.dawncourse.core.domain.model.CampusStyle.CREAM, wallpaperOnHeader = false,
-            wallpaperOnNavigation = true, wallpaperOnCourses = false, wallpaperOnPanels = false, adaptiveCourseColors = false))
+            style = com.dawncourse.core.domain.model.CampusStyle.WAKE_UP, wallpaperOnHeader = false,
+            wallpaperOnNavigation = true, wallpaperOnCourses = false, wallpaperOnPanels = false, adaptiveCourseColors = false,
+            courseBorders = true, barWallpaperBlur = true, barWallpaperOpacity = .25f))
         assertEquals(expected, gson.fromJson(gson.toJson(expected), AppSettings::class.java))
     }
 

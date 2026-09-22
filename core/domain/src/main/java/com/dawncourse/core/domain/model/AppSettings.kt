@@ -128,7 +128,10 @@ data class CampusAppearance(
     val wallpaperOnNavigation: Boolean = false,
     val wallpaperOnCourses: Boolean = true,
     val adaptiveCourseColors: Boolean = true,
-    val wallpaperOnPanels: Boolean = true
+    val wallpaperOnPanels: Boolean = true,
+    val courseBorders: Boolean = false,
+    val barWallpaperBlur: Boolean = false,
+    val barWallpaperOpacity: Float = .18f
 )
 
 /** Stable names are persisted; new presets never overwrite saved course colors. */
@@ -137,7 +140,8 @@ enum class CampusStyle(val title: String, val description: String) {
     MIST("云雾蓝", "清透灰蓝 · 安静柔和"),
     SAGE("鼠尾草", "灰绿与米白 · 自然舒缓"),
     CREAM("奶油杏", "暖白与浅杏 · 温润耐看"),
-    LILAC("雾紫", "淡紫与灰粉 · 柔和清雅");
+    LILAC("雾紫", "淡紫与灰粉 · 柔和清雅"),
+    WAKE_UP("Wake Up", "粉蓝杏卡片 · 浅蓝灰渐变");
 
     companion object {
         fun fromStored(value: String?): CampusStyle = entries.firstOrNull { it.name == value } ?: CLASSIC

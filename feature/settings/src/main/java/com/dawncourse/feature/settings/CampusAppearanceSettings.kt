@@ -23,11 +23,11 @@ fun CampusAppearanceSettings(value: CampusAppearance, onChange: (CampusAppearanc
             TextButton(onClick = { onChange(value.copy(fontScale = 1f)) }) { Text("恢复默认字号") }
             Row { Text("高颜色对比度", Modifier.weight(1f)); Switch(value.highContrast, { onChange(value.copy(highContrast = it)) }) }
             Text("开启后课程采用实色背景，优先保证课程区分与文字清晰。", style = MaterialTheme.typography.bodySmall)
-            Row { Text("局部毛玻璃", Modifier.weight(1f)); Switch(value.glassEnabled, { onChange(value.copy(glassEnabled = it)) }) }
+            Row { Text("课程卡片毛玻璃", Modifier.weight(1f)); Switch(value.glassEnabled, { onChange(value.copy(glassEnabled = it)) }) }
             Text("模糊强度 ${draft.glassRadius.toInt()}")
-            Slider(draft.glassRadius, { draft = draft.copy(glassRadius = it) }, valueRange = 0f..32f, enabled = value.glassEnabled, onValueChangeFinished = { onChange(draft) })
-            Text("卡片覆盖层 ${(draft.glassOpacity * 100).toInt()}%")
-            Slider(draft.glassOpacity, { draft = draft.copy(glassOpacity = it) }, valueRange = .4f..1f, enabled = value.glassEnabled, onValueChangeFinished = { onChange(draft) })
+            Slider(draft.glassRadius, { draft = draft.copy(glassRadius = it) }, valueRange = 0f..32f, enabled = value.glassEnabled || value.barWallpaperBlur, onValueChangeFinished = { onChange(draft) })
+            Text("课程卡片覆盖层 ${(draft.glassOpacity * 100).toInt()}%")
+            Slider(draft.glassOpacity, { draft = draft.copy(glassOpacity = it) }, valueRange = .4f..1f, onValueChangeFinished = { onChange(draft) })
             WidgetPinControls()
             TextButton(onClick = { showNotice = true }) { Text("免责声明与作者联系方式") }
         }

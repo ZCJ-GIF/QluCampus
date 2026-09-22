@@ -1,8 +1,16 @@
 # 齐鲁课表维护说明
 
-本项目是基于 HF-CYGG/Dawn-Course 的非官方修改版，保留 GPL-3.0、上游作者署名及源代码。独立应用 ID 为 `com.qlucampus.app`，当前版本为 `0.2.8`（versionCode 10）。本项目不代表学校官方。
+本项目是基于 HF-CYGG/Dawn-Course 的非官方修改版，保留 GPL-3.0、上游作者署名及源代码。独立应用 ID 为 `com.qlucampus.app`，当前版本为 `0.2.9`（versionCode 11）。本项目不代表学校官方。
 
-## 0.2.8 配色与背景
+## 0.2.9 Wake Up 与背景可见性
+
+`CampusStyle.WAKE_UP` 增加粉彩色板，`CampusBackdrop` 在没有自定义图片时绘制浅蓝灰（或深色）渐变；优先使用用户图片。Wake Up 自动分配课程使用白字，自适应开启时按对比度加深色板，关闭时保留原色。保存过的课程颜色、高对比度及非本周灰色继续优先。
+
+`CampusAppearance.courseBorders` 默认为 false，两个课表布局只按此字段决定描边，和自适应无关联。`barWallpaperBlur` 默认 false，`barWallpaperOpacity` 默认 .18f；DataStore 和备份均支持，旧备份补充默认值。备份门禁检查新浮点字段有限性。
+
+`wallpaperSurfacePolicy` 将 COURSE 与 HEADER/NAVIGATION/PANEL 分开。栏位/面板只绘制对齐的原图或模糊缓存，再绘制一次用户设定的遮罩；不能重复应用根背景 transparency，也不能用课程 safeOpacity 强制提高整栏遮罩。0% 显示原图，100% 纯色，复杂背景的文字可通过用户调高遮罩改善。课程仍独立使用原有可读性保护。背景解码和模糊保持缓存，绘制时不生成位图。
+
+## 0.2.8 配色与背景基础
 
 `CampusAppearance` 持有风格、四个背景区域开关及课程自适应开关，`SettingsRepositoryImpl` 使用独立 DataStore 键读写；缺失/未知的风格名回退为 CLASSIC。UI 通过既有 SettingsViewModel 保存，Course/Room 数据不发生变化。
 
