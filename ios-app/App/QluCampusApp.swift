@@ -55,7 +55,7 @@ struct CampusRoot: View {
                 Button("开始使用") { try? model.commit { $0.disclaimerHidden = hideDisclaimer }; disclaimer = false }.buttonStyle(.borderedProminent)
             }.padding(28).interactiveDismissDisabled()
         }
-        .alert("齐鲁课表", isPresented: Binding(get: { model.message != nil }, set: { if !$0 { model.message = nil } })) { Button("知道了") { model.message = nil } } message: { Text(model.message ?? "") }
+        .alert("齐鲁课表", isPresented: Binding(get: { model.message != nil && !settings }, set: { if !$0 { model.message = nil } })) { Button("知道了") { model.message = nil } } message: { Text(model.message ?? "") }
         .task { disclaimer = !model.db.disclaimerHidden; loadImage(); model.scheduleReminders() }
         .onChange(of: model.appearance.backgroundFile) { _ in loadImage() }
     }

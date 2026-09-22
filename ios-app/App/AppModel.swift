@@ -66,7 +66,9 @@ struct SharedFile: Identifiable {
             let url = self.directory.appendingPathComponent("campus-v1.json")
             if FileManager.default.fileExists(atPath: url.path) { let stored = try JSONDecoder().decode(Database.self, from: Data(contentsOf: url)); try stored.validate(); db = stored }
         } catch { unreadableStore = true; message = "本地数据读取失败，原文件已保留，暂停写入：\(error.localizedDescription)" }
+        #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--uitest") { seedTestData() }
+        #endif
     }
     func commit(_ edit: (inout Database) throws -> Void) throws {
         guard !unreadableStore else { throw CampusError.invalid("原本地文件无法读取，已暂停写入以保留数据") }
@@ -233,10 +235,15 @@ struct SharedFile: Identifiable {
         else { try? FileManager.default.removeItem(at: dir.appendingPathComponent("widget.json")) }
         WidgetCenter.shared.reloadAllTimelines()
     }
+    #if DEBUG
     private func seedTestData() {
         let monday = Dates.monday(Date())
         var table = Timetable(owner: "guest", name: "界面测试课表", term: .current, firstMonday: Dates.string(monday))
         table.courses = [Course(name: "计算机在化学中的应用", location: "菏泽校区 菏泽北楼303", day: 1), Course(name: "无机合成化学", location: "菏泽北楼207", day: 3, start: 3, end: 4), Course(name: "危险化学品安全管理", location: "菏泽南楼104", day: 2, start: 9, end: 10)]
         db = Database(); db.schedules = [table]; db.active = table.id; db.disclaimerHidden = true
+        db.grades = [GradeSnapshot(owner: "guest", term: .current, detailed: true,
+            details: [GradeDetail(name: "测试化学", credits: "2", component: "平时", score: "65"), GradeDetail(name: "测试化学", credits: "2", component: "总评", score: "70"), GradeDetail(name: "测试实验", credits: "1", score: "55")],
+            points: [GradePoint(name: "测试实验", point: "0"), GradePoint(name: "测试化学", point: "3.5")])]
     }
+    #endif
 }

@@ -46,6 +46,12 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild -project QluCampus.xcodeproj -scheme TodayWidget -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build 2>&1 | tee widget-build.log
+      - name: Check optional App Group build
+        run: |
+          set -o pipefail
+          xcodegen generate --spec project-widget.yml
+          xcodebuild -project QluCampus.xcodeproj -scheme QluCampus -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build 2>&1 | tee widget-app-build.log
+          xcodegen generate
       - name: Simulator UI tests
         run: |
           set -o pipefail

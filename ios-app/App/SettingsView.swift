@@ -78,6 +78,7 @@ struct SettingsView: View {
         .fileImporter(isPresented: $importFile, allowedContentTypes: [.json]) { result in if case .success(let url) = result { model.importBackup(url) } }
         .alert("隐藏入口", isPresented: $unlocking) { SecureField("输入密码", text: $password); Button("开启") { model.unlock(password); password = "" }; Button("取消", role: .cancel) { password = "" } } message: { Text("开启后保持显示，直到在设置中锁定。此开关控制界面显示，不代替设备安全锁。") }
         .confirmationDialog("退出学校账号？本机历史数据按账号保留。", isPresented: $confirmLogout, titleVisibility: .visible) { Button("退出账号", role: .destructive) { model.logout() } }
+        .alert("齐鲁课表", isPresented: Binding(get: { model.message != nil && !unlocking }, set: { if !$0 { model.message = nil } })) { Button("知道了") { model.message = nil } } message: { Text(model.message ?? "") }
     }
     var rowBackground: Color { model.appearance.extendBackground && model.appearance.backgroundFile != nil ? .white.opacity(0.18) : Color(uiColor: .secondarySystemGroupedBackground) }
 }
