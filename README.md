@@ -1,5 +1,7 @@
 # 齐鲁课表（基于 Dawn Course 的非官方修改版）
 
+另提供 **iOS 16+ 原生个人版 0.1.0**（SwiftUI），包含课表、成绩/GPA、空教室及外观设置。[iOS 源码与 Windows 个人安装说明](ios-app/README.md) · [iOS 构建与验证记录](docs/QLU-IOS-VALIDATION.md) · [iOS 预览版下载](https://github.com/ZCJ-GIF/QluCampus/releases/tag/ios-v0.1.0)。iOS IPA 需用自己的 Apple 账号签名后安装；以下 Android 发布和更新信息独立维护。
+
 Android 课表、齐鲁工业大学学校登录、成绩分项/绩点查询及 Excel 导出。独立包名 `com.qlucampus.app`，版本 `0.2.10`。成绩、空教室和学校课表导入查询前先检测网络：已有 VPN 或学校网址可访问时直接继续，否则打开手机 aTrust，返回后继续一次原操作。也可手动打开或关闭自动跳转。aTrust 的登录和 VPN 连接由用户在其原界面完成。
 
 可选 Wake Up、云雾蓝、鼠尾草、奶油杏、雾紫及原有配色，支持浅色/深色模式。Wake Up 使用浅蓝灰渐变和粉蓝杏白字卡片。课程边缘线独立开关，默认关闭。自定义背景可延伸到顶栏、导航栏、课程与面板；栏位和面板默认显示原图，独立控制毛玻璃及遮罩，不再重复叠加。课程颜色适应背景默认开启，保护课程名和地点的对比度；Wake Up 关闭自适应后保留粉彩原色。
