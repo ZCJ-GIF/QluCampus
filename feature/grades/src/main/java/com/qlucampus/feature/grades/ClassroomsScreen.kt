@@ -14,7 +14,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.dawncourse.core.domain.repository.*
 import com.dawncourse.core.domain.model.*
-import com.dawncourse.core.ui.components.glassSurface
+import com.dawncourse.core.ui.components.CampusPanelCard
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.*
@@ -93,7 +93,7 @@ fun ClassroomsScreen(onLogin: () -> Unit, onOfficial: (String) -> Unit, vm: Clas
             item { OutlinedButton(onClick = { vpnGate.request(onLogin) }) { Text(if (account == null) "登录学校" else "重新登录学校") }
                 Button(onClick = { val selectedCampus = campus; vpnGate.request { vm.load(selectedCampus) } }, enabled = account != null && !vm.busy) { Text("加载学校查询选项") }
             }
-            item { Card(Modifier.glassSurface(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
+            item { CampusPanelCard() {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(target?.let { "${it.profileName}\n${it.term.label}" } ?: "请先导入并选择学校课表")
                     if (vm.options?.nativeQuery != false) {

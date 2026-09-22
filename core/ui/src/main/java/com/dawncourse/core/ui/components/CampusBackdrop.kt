@@ -28,9 +28,26 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-private data class Backdrop(val image: ImageBitmap? = null, val blurred: ImageBitmap? = null,
-    val size: IntSize = IntSize.Zero, val origin: Offset = Offset.Zero)
-private val LocalBackdrop = staticCompositionLocalOf { Backdrop() }
+internal data class Backdrop(val image: ImageBitmap? = null, val blurred: ImageBitmap? = null,
+    val size: IntSize = IntSize.Zero, val origin: Offset = Offset.Zero,
+    val samples: WallpaperSamples? = null, val blurredSamples: WallpaperSamples? = null)
+internal val LocalBackdrop = staticCompositionLocalOf { Backdrop() }
+
+@Composable
+private fun wallpaperSamples(image: ImageBitmap?, enabled: Boolean): WallpaperSamples? {
+    val samples by produceState<WallpaperSamples?>(null, image, enabled) {
+        value = if (image == null || !enabled) null else withContext(Dispatchers.IO) {
+            runCatching {
+                val bitmap = image.asAndroidBitmap()
+                val pixels = IntArray(32 * 32) { index -> bitmap.getPixel(
+                    ((index % 32 + .5f) * bitmap.width / 32).toInt().coerceAtMost(bitmap.width - 1),
+                    ((index / 32 + .5f) * bitmap.height / 32).toInt().coerceAtMost(bitmap.height - 1)) }
+                WallpaperSamples(bitmap.width, bitmap.height, 32, 32, pixels)
+            }.getOrNull()
+        }
+    }
+    return samples
+}
 
 @Composable
 private fun wallpaper(uri: String?): ImageBitmap? {
@@ -65,12 +82,15 @@ fun CampusBackdrop(modifier: Modifier = Modifier, content: @Composable BoxScope.
     val settings = LocalAppSettings.current
     val image = wallpaper(settings.wallpaperUri)
     val blurred = wallpaper(settings.blurredWallpaperUri)
+    val autoText = settings.campusAppearance.textColorMode == com.dawncourse.core.domain.model.CampusTextColorMode.AUTO_BW
+    val samples = wallpaperSamples(image, autoText)
+    val blurredSamples = wallpaperSamples(blurred, autoText)
     var area by remember { mutableStateOf(IntSize.Zero) }
     var origin by remember { mutableStateOf(Offset.Zero) }
     val surface = MaterialTheme.colorScheme.background
     val wakeUp = if (settings.campusAppearance.style == CampusStyle.WAKE_UP)
         wakeUpBackground(ReadableColors.luminance(surface) < .2) else null
-    CompositionLocalProvider(LocalBackdrop provides Backdrop(image, blurred, area, origin)) {
+    CompositionLocalProvider(LocalBackdrop provides Backdrop(image, blurred, area, origin, samples, blurredSamples)) {
         Box(modifier.onGloballyPositioned { area = it.size; origin = it.positionInRoot() }.drawWithContent {
             drawRect(surface)
             if (image == null && wakeUp != null) paintWakeUp(wakeUp, area)

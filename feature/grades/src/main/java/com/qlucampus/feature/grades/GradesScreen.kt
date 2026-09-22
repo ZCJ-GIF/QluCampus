@@ -12,7 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import com.dawncourse.core.ui.components.glassSurface
+import com.dawncourse.core.ui.components.CampusPanelCard
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.Modifier
@@ -112,7 +112,7 @@ fun GradesScreen(importMode: Boolean = false, breakdownMode: Boolean = false, on
                             false -> if (darkSurface) Color(0xFF432421) else Color(0xFFFDECEA)
                             null -> Color.Unspecified
                         }
-                        OutlinedCard(modifier = Modifier.glassSurface(androidx.compose.foundation.shape.RoundedCornerShape(12.dp), tint, forceOpaque = passed != null), colors = CardDefaults.outlinedCardColors(containerColor = Color.Transparent)) {
+                        CampusPanelCard(tint = tint, forceOpaque = passed != null, outlined = true) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 val first = course.details.first()
                                 Text(first.courseName, style = MaterialTheme.typography.titleMedium)
@@ -132,7 +132,7 @@ fun GradesScreen(importMode: Boolean = false, breakdownMode: Boolean = false, on
                         }
                     }
                     if (matched.unmatchedPoints.isNotEmpty()) item { Text("独立绩点记录", style = MaterialTheme.typography.titleMedium); Text("以下记录无法与课程唯一匹配，按学校原始结果单独展示。", style = MaterialTheme.typography.bodySmall) }
-                    items(matched.unmatchedPoints) { point -> OutlinedCard(modifier = Modifier.glassSurface(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)), colors = CardDefaults.outlinedCardColors(containerColor = Color.Transparent)) { Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    items(matched.unmatchedPoints) { point -> CampusPanelCard(outlined = true) { Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text(point.courseName); Text("绩点 ${supplied(point.point)} · 学分绩点 ${supplied(point.weightedPoint)}")
                     } } }
                 }

@@ -1,6 +1,16 @@
 # 齐鲁课表维护说明
 
-本项目是基于 HF-CYGG/Dawn-Course 的非官方修改版，保留 GPL-3.0、上游作者署名及源代码。独立应用 ID 为 `com.qlucampus.app`，当前版本为 `0.2.9`（versionCode 11）。本项目不代表学校官方。
+本项目是基于 HF-CYGG/Dawn-Course 的非官方修改版，保留 GPL-3.0、上游作者署名及源代码。独立应用 ID 为 `com.qlucampus.app`，当前版本为 `0.2.10`（versionCode 12）。本项目不代表学校官方。
+
+## 0.2.10 字体与自适应文字
+
+`AppFontStyle` 增加 BOLD，`getTypography` 对全部 15 个 Material 角色应用字体；课程名称的拟合测量和局部日期/导航样式保留加粗选择。SYSTEM/SERIF/MONOSPACE 使用 Android 原生字体族，不下载或打包额外字体；中文回退字形由 ROM 提供。
+
+`CampusAppearance.textColorMode` 为 STYLE（旧用户默认）、AUTO_BW、CUSTOM；`customTextColor` 使用不含透明度的 #RRGGBB。DataStore 解析异常模式回退 STYLE、异常颜色回退 #202124；备份门禁拒绝非法枚举和颜色后才允许写入。保留模式与自定义色，切换自动黑白不丢失手选颜色。
+
+`CampusText` 集中管理颜色解析、黑白对比与区域采样。`CampusBackdrop` 仅在 AUTO_BW 模式生成每张原图/模糊图的 32×32 颜色缓存，IO 执行；`rememberBackdropText` 使用布局位置、原图裁剪/填充、亮度及区域遮罩取得代表背景，按对比选择黑白。位置变更时读取缓存，不在 draw 中分配位图或更新状态。顶部和底部可使用不同前景，时间轴逐节判断。混合照片的细节仍可通过栏位遮罩改善。
+
+`CourseAppearance` 在自动模式选择黑/白，并用已有 safeOpacity 保护照片混合像素的对比；不要求课程配色自适应开启。自定义使用所选文字颜色，不擅自替换成黑白。`CampusTextColors` 和 `CampusPanelCard` 只重设普通 onSurface/onBackground 文本；按钮、错误、成绩合格/挂科继续保留语义色。字体控制面板使用可读实色底，即使用户选择白字仍能恢复默认。
 
 ## 0.2.9 Wake Up 与背景可见性
 

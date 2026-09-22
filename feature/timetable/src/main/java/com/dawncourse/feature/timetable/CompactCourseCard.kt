@@ -29,7 +29,7 @@ internal fun compactStatus(course: Course, current: Boolean) = listOfNotNull(
     "非本周".takeUnless { current }, "已调课".takeIf { course.isModified }
 ).joinToString(" · ")
 
-internal fun compactNameStyle(base: TextStyle, size: Float) = base.copy(fontSize = size.sp, lineHeight = (size + 2).sp, fontWeight = FontWeight.Medium)
+internal fun compactNameStyle(base: TextStyle, size: Float) = base.copy(fontSize = size.sp, lineHeight = (size + 2).sp, fontWeight = if ((base.fontWeight?.weight ?: 400) >= 700) FontWeight.Bold else FontWeight.Medium)
 internal fun compactInfoStyle(base: TextStyle, size: Float) = base.copy(fontSize = (size - 1).sp, lineHeight = (size + 1).sp)
 internal fun compactTextHeight(measurer: TextMeasurer, text: String, style: TextStyle, width: Int, maxLines: Int = Int.MAX_VALUE): Int =
     if (text.isBlank()) 0 else measurer.measure(text, style, constraints = Constraints(maxWidth = width.coerceAtLeast(1)), maxLines = maxLines, overflow = TextOverflow.Ellipsis).size.height

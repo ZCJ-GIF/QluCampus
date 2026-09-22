@@ -25,6 +25,9 @@ import androidx.compose.ui.unit.sp
 import com.dawncourse.core.ui.theme.LocalAppSettings
 import com.dawncourse.core.ui.components.glassSurface
 import com.dawncourse.core.ui.components.WallpaperArea
+import com.dawncourse.core.ui.components.rememberBackdropText
+import com.dawncourse.core.domain.model.CampusTextColorMode
+import com.dawncourse.core.domain.model.AppFontStyle
 
 @Composable
 internal fun CampusBottomNavigation(activeRoute: String, gradeUnlocked: Boolean, onNavigate: (String) -> Unit) {
@@ -32,8 +35,11 @@ internal fun CampusBottomNavigation(activeRoute: String, gradeUnlocked: Boolean,
         if (gradeUnlocked) listOf("grade_details" to "平时成绩") else emptyList()
     val overlay = activeRoute == "timetable"
     val extend = LocalAppSettings.current.campusAppearance.wallpaperOnNavigation && !LocalAppSettings.current.wallpaperUri.isNullOrBlank()
+    val text = rememberBackdropText(WallpaperArea.NAVIGATION, forceOpaque = !extend)
+    val textOverride = LocalAppSettings.current.campusAppearance.textColorMode != CampusTextColorMode.STYLE
     Row(
         Modifier.fillMaxWidth()
+            .then(text.modifier)
             .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
             .then(if (extend) Modifier.glassSurface(area = WallpaperArea.NAVIGATION)
                 else Modifier.background(MaterialTheme.colorScheme.surface.copy(alpha = if (overlay) .76f else 1f)))
@@ -44,7 +50,7 @@ internal fun CampusBottomNavigation(activeRoute: String, gradeUnlocked: Boolean,
     ) {
         tabs.forEach { (route, label) ->
             val selected = activeRoute == route
-            val color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+            val color = if (textOverride) text.color else if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
             Column(
                 Modifier.weight(1f).fillMaxHeight()
                     .selectable(selected = selected, role = Role.Tab, onClick = { onNavigate(route) }),
@@ -61,7 +67,7 @@ internal fun CampusBottomNavigation(activeRoute: String, gradeUnlocked: Boolean,
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(label, color = color, fontSize = 12.sp, lineHeight = 16.sp,
-                    fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal, maxLines = 1)
+                    fontWeight = if (LocalAppSettings.current.fontStyle == AppFontStyle.BOLD) FontWeight.Bold else if (selected) FontWeight.Medium else FontWeight.Normal, maxLines = 1)
             }
         }
     }

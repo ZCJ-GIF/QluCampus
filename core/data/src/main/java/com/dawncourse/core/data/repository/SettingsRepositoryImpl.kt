@@ -76,6 +76,8 @@ class SettingsRepositoryImpl @Inject constructor(
         val COURSE_BORDERS = booleanPreferencesKey("campus_course_borders")
         val BAR_WALLPAPER_BLUR = booleanPreferencesKey("campus_bar_wallpaper_blur")
         val BAR_WALLPAPER_OPACITY = floatPreferencesKey("campus_bar_wallpaper_opacity")
+        val TEXT_COLOR_MODE = stringPreferencesKey("campus_text_color_mode")
+        val CUSTOM_TEXT_COLOR = stringPreferencesKey("campus_custom_text_color")
         val HIDE_NOTICE = booleanPreferencesKey("campus_hide_notice")
         /** 是否启用动态取色 */
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
@@ -269,7 +271,10 @@ class SettingsRepositoryImpl @Inject constructor(
                 wallpaperOnPanels = preferences[PreferencesKeys.WALLPAPER_PANELS] ?: true,
                 courseBorders = preferences[PreferencesKeys.COURSE_BORDERS] ?: false,
                 barWallpaperBlur = preferences[PreferencesKeys.BAR_WALLPAPER_BLUR] ?: false,
-                barWallpaperOpacity = preferences[PreferencesKeys.BAR_WALLPAPER_OPACITY] ?: .18f),
+                barWallpaperOpacity = preferences[PreferencesKeys.BAR_WALLPAPER_OPACITY] ?: .18f,
+                textColorMode = com.dawncourse.core.domain.model.CampusTextColorMode.fromStored(preferences[PreferencesKeys.TEXT_COLOR_MODE]),
+                customTextColor = preferences[PreferencesKeys.CUSTOM_TEXT_COLOR]?.takeIf {
+                    com.dawncourse.core.domain.model.CampusTextColorMode.validColor(it) } ?: "#202124"),
             hideWelcomeNotice = preferences[PreferencesKeys.HIDE_NOTICE] ?: false,
             transparency = transparency,
             fontStyle = fontStyle,
@@ -327,6 +332,9 @@ class SettingsRepositoryImpl @Inject constructor(
         this[PreferencesKeys.COURSE_BORDERS] = value.courseBorders
         this[PreferencesKeys.BAR_WALLPAPER_BLUR] = value.barWallpaperBlur
         this[PreferencesKeys.BAR_WALLPAPER_OPACITY] = value.barWallpaperOpacity.coerceIn(0f, 1f)
+        this[PreferencesKeys.TEXT_COLOR_MODE] = value.textColorMode.name
+        this[PreferencesKeys.CUSTOM_TEXT_COLOR] = value.customTextColor.takeIf {
+            com.dawncourse.core.domain.model.CampusTextColorMode.validColor(it) }?.uppercase(java.util.Locale.ROOT) ?: "#202124"
     }
     override suspend fun setCampusAppearance(value: com.dawncourse.core.domain.model.CampusAppearance) {
         val previous = settings.first().campusAppearance

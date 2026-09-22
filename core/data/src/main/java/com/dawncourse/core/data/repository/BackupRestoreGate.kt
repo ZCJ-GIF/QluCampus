@@ -211,6 +211,8 @@ internal object BackupPayloadValidator {
         settings.wallpaperMode.name
         settings.themeMode.name
         settings.campusAppearance.style.name
+        settings.campusAppearance.textColorMode.name
+        require(com.dawncourse.core.domain.model.CampusTextColorMode.validColor(settings.campusAppearance.customTextColor)) { "文字颜色无效" }
         require(settings.campusAppearance.fontScale.isFinite() && settings.campusAppearance.glassRadius.isFinite() &&
             settings.campusAppearance.glassOpacity.isFinite() && settings.campusAppearance.barWallpaperOpacity.isFinite()) { "外观数值无效" }
         settings.webDavAutoSyncMode.name

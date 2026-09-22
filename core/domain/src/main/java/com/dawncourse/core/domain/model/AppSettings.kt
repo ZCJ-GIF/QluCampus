@@ -9,7 +9,9 @@ enum class AppFontStyle {
     /** 衬线字体 */
     SERIF,
     /** 等宽字体 */
-    MONOSPACE
+    MONOSPACE,
+    /** 系统字体加粗，适合小屏阅读 */
+    BOLD
 }
 
 /**
@@ -131,8 +133,18 @@ data class CampusAppearance(
     val wallpaperOnPanels: Boolean = true,
     val courseBorders: Boolean = false,
     val barWallpaperBlur: Boolean = false,
-    val barWallpaperOpacity: Float = .18f
+    val barWallpaperOpacity: Float = .18f,
+    val textColorMode: CampusTextColorMode = CampusTextColorMode.STYLE,
+    val customTextColor: String = "#202124"
 )
+
+enum class CampusTextColorMode(val title: String) {
+    STYLE("跟随风格"), AUTO_BW("自动黑白"), CUSTOM("自定义颜色");
+    companion object {
+        fun fromStored(value: String?): CampusTextColorMode = entries.firstOrNull { it.name == value } ?: STYLE
+        fun validColor(value: String?): Boolean = value != null && Regex("#[0-9a-fA-F]{6}").matches(value)
+    }
+}
 
 /** Stable names are persisted; new presets never overwrite saved course colors. */
 enum class CampusStyle(val title: String, val description: String) {

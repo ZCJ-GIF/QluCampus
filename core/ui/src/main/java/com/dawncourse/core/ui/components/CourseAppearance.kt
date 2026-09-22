@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import com.dawncourse.core.domain.model.CampusStyle
+import com.dawncourse.core.domain.model.CampusTextColorMode
 import com.dawncourse.core.domain.model.Course
 import com.dawncourse.core.ui.theme.LocalAppSettings
 import com.dawncourse.core.ui.theme.LocalWallpaperSeed
@@ -17,21 +18,24 @@ import com.dawncourse.core.ui.util.ReadableColors
 data class CourseSurfaceColors(val background: Color, val foreground: Color, val opacity: Float, val outlined: Boolean)
 
 fun readableCourseSurface(base: Color, wallpaper: Color?, adaptive: Boolean, requestedOpacity: Float,
-    outlined: Boolean = false, preferWhiteText: Boolean = false): CourseSurfaceColors {
+    outlined: Boolean = false, preferWhiteText: Boolean = false,
+    textMode: CampusTextColorMode = CampusTextColorMode.STYLE, textHex: String = "#202124"): CourseSurfaceColors {
     var color = if (adaptive && wallpaper != null) {
         val harmonized = ReadableColors.mix(base, wallpaper, .08f)
         ReadableColors.mix(harmonized, if (ReadableColors.luminance(wallpaper) > .55) Color(0xFF263238) else Color.White, .12f)
     } else base
     // Wake Up uses white lettering. Adaptive mode deepens its pastel hue only as much
     // as needed to keep that lettering readable; it never writes a course's saved color.
-    if (preferWhiteText && adaptive && ReadableColors.contrast(Color.White, color) < 4.5) {
+    if (textMode == CampusTextColorMode.STYLE && preferWhiteText && adaptive && ReadableColors.contrast(Color.White, color) < 4.5) {
         val original = color
         color = (0..100).map { ReadableColors.mix(original, Color.Black, it / 100f) }
             .first { ReadableColors.contrast(Color.White, it) >= 4.5 }
     }
-    val foreground = if (preferWhiteText) Color.White else ReadableColors.bestText(color)
+    val original = if (preferWhiteText) Color.White else ReadableColors.bestText(color)
+    val foreground = resolveCampusText(textMode, textHex, color, original)
     return CourseSurfaceColors(color, foreground,
-        if (adaptive) ReadableColors.safeOpacity(color, foreground, requestedOpacity) else requestedOpacity,
+        if (textMode != CampusTextColorMode.CUSTOM && (adaptive || textMode == CampusTextColorMode.AUTO_BW))
+            ReadableColors.safeOpacity(color, foreground, requestedOpacity) else requestedOpacity,
         outlined)
 }
 
@@ -50,9 +54,11 @@ fun rememberCourseSurface(course: Course, current: Boolean): CourseSurfaceColors
             base = colors[Math.floorMod(CourseColorUtils.key(course).hashCode(), colors.size)]
             if (ReadableColors.luminance(surface) < .2) base = ReadableColors.mix(base, surface, .55f)
         }
-        if (preserve) CourseSurfaceColors(base, ReadableColors.bestText(base), 1f, appearance.courseBorders)
+        if (preserve) CourseSurfaceColors(base,
+            resolveCampusText(appearance.textColorMode, appearance.customTextColor, base, ReadableColors.bestText(base)), 1f, appearance.courseBorders)
         else readableCourseSurface(base, seed, appearance.adaptiveCourseColors, appearance.glassOpacity,
             outlined = appearance.courseBorders,
-            preferWhiteText = appearance.style == CampusStyle.WAKE_UP && course.color.isBlank())
+            preferWhiteText = appearance.style == CampusStyle.WAKE_UP && course.color.isBlank(),
+            textMode = appearance.textColorMode, textHex = appearance.customTextColor)
     }
 }

@@ -27,14 +27,17 @@ class BackupRestoreGateTest {
         assertFalse(settings.campusAppearance.courseBorders)
         assertFalse(settings.campusAppearance.barWallpaperBlur)
         assertEquals(.18f, settings.campusAppearance.barWallpaperOpacity, .001f)
+        assertEquals(com.dawncourse.core.domain.model.CampusTextColorMode.STYLE, settings.campusAppearance.textColorMode)
+        assertEquals("#202124", settings.campusAppearance.customTextColor)
         assertEquals(1.2f, settings.campusAppearance.fontScale, .001f)
     }
 
     @Test fun appearanceSettingsRoundTripThroughBackup() {
-        val expected = AppSettings(campusAppearance = com.dawncourse.core.domain.model.CampusAppearance(
+        val expected = AppSettings(fontStyle = com.dawncourse.core.domain.model.AppFontStyle.BOLD, campusAppearance = com.dawncourse.core.domain.model.CampusAppearance(
             style = com.dawncourse.core.domain.model.CampusStyle.WAKE_UP, wallpaperOnHeader = false,
             wallpaperOnNavigation = true, wallpaperOnCourses = false, wallpaperOnPanels = false, adaptiveCourseColors = false,
-            courseBorders = true, barWallpaperBlur = true, barWallpaperOpacity = .25f))
+            courseBorders = true, barWallpaperBlur = true, barWallpaperOpacity = .25f,
+            textColorMode = com.dawncourse.core.domain.model.CampusTextColorMode.CUSTOM, customTextColor = "#254A70"))
         assertEquals(expected, gson.fromJson(gson.toJson(expected), AppSettings::class.java))
     }
 
@@ -43,6 +46,16 @@ class BackupRestoreGateTest {
         var committed = false
         assertTrue(BackupRestoreGate.validateThenCommit(validPayload(settings = settings)) { committed = true }.isFailure)
         assertFalse(committed)
+    }
+
+    @Test fun invalidTextSettingsFailBeforeCommit() = runBlocking {
+        listOf("""{"campusAppearance":{"textColorMode":"FUTURE"}}""",
+            """{"campusAppearance":{"customTextColor":"#INVALID"}}""").forEach { json ->
+            var committed = false
+            val settings = gson.fromJson(json, AppSettings::class.java)
+            assertTrue(BackupRestoreGate.validateThenCommit(validPayload(settings = settings)) { committed = true }.isFailure)
+            assertFalse(committed)
+        }
     }
 
     @Test

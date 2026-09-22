@@ -280,6 +280,7 @@ fun SettingsScreen(
                 try { wallpaperLauncher.launch(arrayOf("image/*")) }
                 catch (_: Exception) { Toast.makeText(context, "无法打开图片选择器", Toast.LENGTH_SHORT).show() }
             })
+            CampusTextSettings(settings, viewModel::setFontStyle, viewModel::setCampusAppearance)
             CampusAppearanceSettings(settings.campusAppearance, viewModel::setCampusAppearance)
             viewModel.appearanceError?.let { error -> Text(error, color = MaterialTheme.colorScheme.error); TextButton(onClick = viewModel::clearAppearanceError) { Text("关闭提示") } }
             TimetableSection(

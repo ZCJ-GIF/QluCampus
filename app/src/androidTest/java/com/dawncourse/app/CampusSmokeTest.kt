@@ -302,7 +302,93 @@ class CampusSmokeTest {
             appearanceToggles.forEach { label -> scrollTo(By.desc(label)).click(); android.os.SystemClock.sleep(200) }
             val persistedOn = runBlocking { com.dawncourse.core.data.repository.SettingsRepositoryImpl(context).settings.first().campusAppearance }
             assertTrue(persistedOn.wallpaperOnHeader && persistedOn.wallpaperOnNavigation && persistedOn.wallpaperOnCourses && persistedOn.wallpaperOnPanels && persistedOn.adaptiveCourseColors)
+            listOf("系统字体" to com.dawncourse.core.domain.model.AppFontStyle.SYSTEM,
+                "衬线字体" to com.dawncourse.core.domain.model.AppFontStyle.SERIF,
+                "等宽字体" to com.dawncourse.core.domain.model.AppFontStyle.MONOSPACE,
+                "加粗字体" to com.dawncourse.core.domain.model.AppFontStyle.BOLD).forEach { (label, style) ->
+                scrollTo(By.text(label)).click()
+                android.os.SystemClock.sleep(300)
+                assertEquals(style, runBlocking { settings.settings.first().fontStyle })
+            }
+            scrollTo(By.text("自定义颜色")).click()
+            scrollTo(By.desc("文字颜色 #254A70")).click()
+            android.os.SystemClock.sleep(300)
+            assertEquals("#254A70", runBlocking { settings.settings.first().campusAppearance.customTextColor })
+            val hexField = scrollTo(By.clazz("android.widget.EditText"))
+            hexField.text = "#NOPE"
+            scrollTo(By.text("应用文字颜色"))
+            assertDisabledButton("应用文字颜色")
+            scrollTo(By.clazz("android.widget.EditText")).text = "#6B2F87"
+            scrollTo(By.text("应用文字颜色")).click()
+            android.os.SystemClock.sleep(300)
+            val manualText = runBlocking { com.dawncourse.core.data.repository.SettingsRepositoryImpl(context).settings.first() }
+            assertEquals(com.dawncourse.core.domain.model.AppFontStyle.BOLD, manualText.fontStyle)
+            assertEquals(com.dawncourse.core.domain.model.CampusTextColorMode.CUSTOM, manualText.campusAppearance.textColorMode)
+            assertEquals("#6B2F87", manualText.campusAppearance.customTextColor)
+            scrollTo(By.text("调节色相、饱和度和亮度")).click()
+            assertTrue(device.wait(Until.hasObject(By.text("选择颜色")), 10000))
+            tap("取消")
+            assertEquals("#6B2F87", runBlocking { settings.settings.first().campusAppearance.customTextColor })
+            scrollTo(By.text("自动黑白")).click()
+            android.os.SystemClock.sleep(300)
+            assertEquals(com.dawncourse.core.domain.model.CampusTextColorMode.AUTO_BW, runBlocking { settings.settings.first().campusAppearance.textColorMode })
+            shot("0210-text-settings.png")
             device.pressBack()
+            val splitFile = File(context.filesDir, "synthetic-light-dark.png")
+            val split = android.graphics.Bitmap.createBitmap(800, 1400, android.graphics.Bitmap.Config.ARGB_8888)
+            val splitCanvas = android.graphics.Canvas(split)
+            splitCanvas.drawColor(android.graphics.Color.BLACK)
+            splitCanvas.drawRect(0f, 0f, 800f, 700f, android.graphics.Paint().apply { color = android.graphics.Color.WHITE })
+            splitFile.outputStream().use { split.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; split.recycle()
+            runBlocking {
+                settings.setWallpaperUri(android.net.Uri.fromFile(splitFile).toString())
+                settings.generateBlurredWallpaper(settings.settings.first().wallpaperUri)
+                settings.setBackgroundBrightness(1f)
+                settings.setTransparency(0f)
+                settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(style = com.dawncourse.core.domain.model.CampusStyle.WAKE_UP,
+                    textColorMode = com.dawncourse.core.domain.model.CampusTextColorMode.AUTO_BW, barWallpaperOpacity = 0f,
+                    barWallpaperBlur = false, wallpaperOnCourses = false, adaptiveCourseColors = false))
+            }
+            fun assertInk(selector: androidx.test.uiautomator.BySelector, color: Int) {
+                val bounds = requireNotNull(device.findObjects(selector).lastOrNull()).visibleBounds
+                val image = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+                var count = 0
+                for (y in bounds.top.coerceAtLeast(0) until bounds.bottom.coerceAtMost(image.height)) {
+                    for (x in bounds.left.coerceAtLeast(0) until bounds.right.coerceAtMost(image.width)) {
+                        val actual = image.getPixel(x, y)
+                        if (kotlin.math.abs(android.graphics.Color.red(actual) - android.graphics.Color.red(color)) < 12 &&
+                            kotlin.math.abs(android.graphics.Color.green(actual) - android.graphics.Color.green(color)) < 12 &&
+                            kotlin.math.abs(android.graphics.Color.blue(actual) - android.graphics.Color.blue(color)) < 12) count++
+                    }
+                }
+                image.recycle()
+                assertTrue("$selector 应实际绘制指定前景色", count > bounds.width() * bounds.height() / 100)
+            }
+            android.os.SystemClock.sleep(1500)
+            assertInk(By.desc("设置"), android.graphics.Color.BLACK)
+            assertInk(By.text("课表"), android.graphics.Color.WHITE)
+            assertInk(By.text("高分子材料科学与工程基础"), android.graphics.Color.BLACK)
+            assertNotNull(device.findObject(By.text("10")))
+            shot("0210-auto-light-top-dark-bottom.png")
+            runBlocking { settings.setBackgroundBrightness(.1f) }
+            android.os.SystemClock.sleep(700)
+            assertInk(By.desc("设置"), android.graphics.Color.WHITE)
+            shot("0210-auto-dimmed-background.png")
+            runBlocking { settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(barWallpaperOpacity = 1f)) }
+            android.os.SystemClock.sleep(700)
+            assertInk(By.text("课表"), android.graphics.Color.BLACK)
+            runBlocking { settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(textColorMode = com.dawncourse.core.domain.model.CampusTextColorMode.CUSTOM)) }
+            android.os.SystemClock.sleep(700)
+            assertInk(By.desc("设置"), android.graphics.Color.rgb(107,47,135))
+            assertInk(By.text("高分子材料科学与工程基础"), android.graphics.Color.rgb(107,47,135))
+            shot("0210-custom-purple.png")
+            runBlocking {
+                settings.setBackgroundBrightness(1f)
+                settings.setWallpaperUri(android.net.Uri.fromFile(source).toString())
+                settings.generateBlurredWallpaper(settings.settings.first().wallpaperUri)
+                settings.setFontStyle(com.dawncourse.core.domain.model.AppFontStyle.SYSTEM)
+                settings.setCampusAppearance(persistedOn)
+            }
             runBlocking { settings.setThemeMode(com.dawncourse.core.domain.model.AppThemeMode.DARK) }
             android.os.SystemClock.sleep(600)
             shot("029-background-dark.png")

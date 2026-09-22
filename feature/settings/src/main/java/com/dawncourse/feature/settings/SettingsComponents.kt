@@ -1,6 +1,9 @@
 package com.dawncourse.feature.settings
 
 import com.dawncourse.core.ui.components.glassSurface
+import com.dawncourse.core.ui.components.rememberBackdropText
+import com.dawncourse.core.ui.components.CampusTextColors
+import com.dawncourse.core.ui.components.WallpaperArea
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,22 +29,26 @@ fun PreferenceCategory(
     title: String,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val text = rememberBackdropText(WallpaperArea.PANEL)
+    val heading = rememberBackdropText(WallpaperArea.PANEL, fallback = MaterialTheme.colorScheme.primary)
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
+            color = heading.color,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
-                .glassSurface(RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp)
+                .glassSurface(RoundedCornerShape(8.dp)).then(heading.modifier).padding(horizontal = 8.dp, vertical = 4.dp)
         )
         Card(
-            modifier = Modifier.fillMaxWidth().glassSurface(RoundedCornerShape(16.dp)),
+            modifier = Modifier.fillMaxWidth().glassSurface(RoundedCornerShape(16.dp)).then(text.modifier),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent, contentColor = text.color)
         ) {
+            CampusTextColors(text.color) {
             Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 content()
+            }
             }
         }
     }

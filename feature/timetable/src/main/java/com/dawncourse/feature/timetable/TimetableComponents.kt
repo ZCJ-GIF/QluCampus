@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import com.dawncourse.core.ui.components.glassSurface
+import com.dawncourse.core.ui.components.rememberBackdropText
+import com.dawncourse.core.domain.model.AppFontStyle
+import com.dawncourse.core.domain.model.CampusTextColorMode
 import com.dawncourse.core.ui.components.rememberCourseSurface
 import com.dawncourse.core.ui.components.WallpaperArea
 import androidx.compose.foundation.layout.height
@@ -126,14 +129,15 @@ fun TimetableTopBar(
 ) {
     var showWeekMenu by remember { mutableStateOf(false) }
     val weekMenuScrollState = rememberScrollState()
-    val topBarIconColor = MaterialTheme.colorScheme.onSurface
+    val text = rememberBackdropText(WallpaperArea.HEADER)
+    val topBarIconColor = text.color
     val compact = LocalAppSettings.current.campusAppearance.fitTimetableToScreen
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
     val actionSize = if (maxWidth < 380.dp) 32.dp else 36.dp
     val dateSize = if (maxWidth < 350.dp) 18.sp else 24.sp
     TopAppBar(
-        modifier = Modifier.glassSurface(area = WallpaperArea.HEADER),
+        modifier = Modifier.glassSurface(area = WallpaperArea.HEADER).then(text.modifier),
         windowInsets = TopAppBarDefaults.windowInsets,
         expandedHeight = if (compact) 72.dp else 64.dp,
         title = {
@@ -149,7 +153,7 @@ fun TimetableTopBar(
                     Text(
                         text = if (compact) LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy/M/d")) else if (isHolidayMode) "假期中" else "第 $displayedWeek 周",
                         style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = if (compact) FontWeight.Normal else FontWeight.Bold, fontSize = if (compact) dateSize else 22.sp
+                            fontWeight = if (compact && LocalAppSettings.current.fontStyle != AppFontStyle.BOLD) FontWeight.Normal else FontWeight.Bold, fontSize = if (compact) dateSize else 22.sp
                         ),
                         color = topBarIconColor, maxLines = 1, softWrap = false
                     )
@@ -374,23 +378,26 @@ fun WeekHeader(
     textColor: Color = MaterialTheme.colorScheme.onSurface
 ) {
     val settings = LocalAppSettings.current
+    val text = rememberBackdropText(WallpaperArea.HEADER, fallback = textColor)
+    val foreground = text.color
+    val mutedAlpha = if (settings.campusAppearance.textColorMode == CampusTextColorMode.STYLE) .7f else 1f
     if (settings.campusAppearance.fitTimetableToScreen) {
         val monday = semesterStartDate?.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
             ?.plusWeeks((displayedWeek - 1).toLong())
         val today = LocalDate.now()
-        Row(modifier.fillMaxWidth().height(LocalWeekHeaderHeight.current).glassSurface(area = WallpaperArea.HEADER), verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier.fillMaxWidth().height(LocalWeekHeaderHeight.current).glassSurface(area = WallpaperArea.HEADER).then(text.modifier), verticalAlignment = Alignment.CenterVertically) {
             Text(monday?.let { "${it.monthValue}\n月" }.orEmpty(), Modifier.width(LocalTimeColumnWidth.current),
-                textAlign = TextAlign.Center, fontSize = 12.sp, lineHeight = 15.sp, color = textColor)
+                textAlign = TextAlign.Center, fontSize = 12.sp, lineHeight = 15.sp, color = foreground)
             repeat(if (settings.showWeekend) 7 else 5) { index ->
                 val date = monday?.plusDays(index.toLong())
                 val selected = date == today && isCurrentWeek
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(listOf("一", "二", "三", "四", "五", "六", "日")[index], fontSize = 13.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        color = textColor.copy(alpha = if (selected) 1f else .7f))
+                        fontWeight = if (selected || settings.fontStyle == AppFontStyle.BOLD) FontWeight.Bold else FontWeight.Normal,
+                        color = foreground.copy(alpha = if (selected) 1f else mutedAlpha))
                     Text(date?.let { "${it.monthValue}/${it.dayOfMonth}" }.orEmpty(), fontSize = 11.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        color = textColor.copy(alpha = if (selected) 1f else .7f))
+                        fontWeight = if (selected || settings.fontStyle == AppFontStyle.BOLD) FontWeight.Bold else FontWeight.Normal,
+                        color = foreground.copy(alpha = if (selected) 1f else mutedAlpha))
                 }
             }
         }
@@ -409,7 +416,7 @@ fun WeekHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .glassSurface(area = WallpaperArea.HEADER)
+            .glassSurface(area = WallpaperArea.HEADER).then(text.modifier)
             .padding(start = LocalTimeColumnWidth.current)
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -430,9 +437,9 @@ fun WeekHeader(
             ) {
                 Text(
                     text = day,
-                    color = if (isToday) textColor else textColor.copy(alpha = 0.7f),
+                    color = if (isToday) foreground else foreground.copy(alpha = mutedAlpha),
                     fontSize = if (isToday) 15.sp else 12.sp,
-                    fontWeight = if (isToday) FontWeight.ExtraBold else FontWeight.Medium
+                    fontWeight = if (isToday) FontWeight.ExtraBold else if (settings.fontStyle == AppFontStyle.BOLD) FontWeight.Bold else FontWeight.Medium
                 )
 
                 Spacer(modifier = Modifier.height(0.dp))
@@ -445,9 +452,9 @@ fun WeekHeader(
 
                     Text(
                         text = dateText,
-                        color = if (isToday) textColor else textColor.copy(alpha = 0.5f),
+                        color = if (isToday) foreground else foreground.copy(alpha = mutedAlpha),
                         fontSize = if (isToday) 11.sp else 10.sp,
-                        fontWeight = if (isToday) FontWeight.Bold else FontWeight.Light
+                        fontWeight = if (isToday || settings.fontStyle == AppFontStyle.BOLD) FontWeight.Bold else FontWeight.Light
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                 } else {
@@ -487,8 +494,10 @@ fun TimeColumnIndicator(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         for (i in 1..maxNodes) {
+            val text = rememberBackdropText(WallpaperArea.HEADER, fallback = textColor)
+            val muted = if (settings.campusAppearance.textColorMode == CampusTextColorMode.STYLE) .8f else 1f
             Column(
-                modifier = Modifier.height(nodeHeight),
+                modifier = Modifier.height(nodeHeight).then(text.modifier),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -496,10 +505,9 @@ fun TimeColumnIndicator(
                     text = i.toString(),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.SansSerif
+                        fontWeight = FontWeight.Bold
                     ),
-                    color = textColor
+                    color = text.color
                 )
                 // Show configured time or default
                 val sectionTime = settings.sectionTimes.getOrNull(i - 1)
@@ -509,20 +517,18 @@ fun TimeColumnIndicator(
                 if (settings.showSidebarTime) Text(
                     text = startTime,
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 8.sp,
-                        fontFamily = FontFamily.Monospace
+                        fontSize = 8.sp
                     ),
-                    color = textColor.copy(alpha = 0.8f)
+                    color = text.color.copy(alpha = muted)
                 )
                 
                 if (settings.showSidebarTime && !endTime.isNullOrBlank()) {
                     Text(
                         text = endTime,
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 8.sp,
-                            fontFamily = FontFamily.Monospace
+                            fontSize = 8.sp
                         ),
-                        color = textColor.copy(alpha = 0.8f)
+                        color = text.color.copy(alpha = muted)
                     )
                 }
             }

@@ -32,8 +32,8 @@ val Typography = Typography(
 )
 
 fun getTypography(style: AppFontStyle): Typography {
-    val fontFamily = when (style) {
-        AppFontStyle.SYSTEM -> FontFamily.Default
+    val selectedFamily = when (style) {
+        AppFontStyle.SYSTEM, AppFontStyle.BOLD -> FontFamily.Default
         AppFontStyle.SERIF -> FontFamily.Serif
         AppFontStyle.MONOSPACE -> FontFamily.Monospace
     }
@@ -43,9 +43,9 @@ fun getTypography(style: AppFontStyle): Typography {
         trim = LineHeightStyle.Trim.None
     )
 
-    return Typography(
+    val base = Typography(
         bodyLarge = TextStyle(
-            fontFamily = fontFamily,
+            fontFamily = selectedFamily,
             fontWeight = FontWeight.Normal,
             fontSize = 16.sp,
             lineHeight = 24.sp,
@@ -54,7 +54,7 @@ fun getTypography(style: AppFontStyle): Typography {
             lineHeightStyle = lineHeightStyle
         ),
         titleLarge = TextStyle(
-            fontFamily = fontFamily,
+            fontFamily = selectedFamily,
             fontWeight = FontWeight.Normal,
             fontSize = 22.sp,
             lineHeight = 28.sp,
@@ -63,7 +63,7 @@ fun getTypography(style: AppFontStyle): Typography {
             lineHeightStyle = lineHeightStyle
         ),
         labelSmall = TextStyle(
-            fontFamily = fontFamily,
+            fontFamily = selectedFamily,
             fontWeight = FontWeight.Medium,
             fontSize = 11.sp,
             lineHeight = 16.sp,
@@ -71,6 +71,16 @@ fun getTypography(style: AppFontStyle): Typography {
             platformStyle = platformStyle,
             lineHeightStyle = lineHeightStyle
         )
-        // Add other styles as needed, copying defaults but changing fontFamily
     )
+    // Cover every Material role, including course bodyMedium/bodySmall and navigation
+    // labels. Previously only three roles used the selected family.
+    fun TextStyle.applyFont() = copy(fontFamily = selectedFamily,
+        fontWeight = if (style == AppFontStyle.BOLD) FontWeight.Bold else fontWeight,
+        platformStyle = platformStyle, lineHeightStyle = lineHeightStyle)
+    return base.copy(
+        displayLarge = base.displayLarge.applyFont(), displayMedium = base.displayMedium.applyFont(), displaySmall = base.displaySmall.applyFont(),
+        headlineLarge = base.headlineLarge.applyFont(), headlineMedium = base.headlineMedium.applyFont(), headlineSmall = base.headlineSmall.applyFont(),
+        titleLarge = base.titleLarge.applyFont(), titleMedium = base.titleMedium.applyFont(), titleSmall = base.titleSmall.applyFont(),
+        bodyLarge = base.bodyLarge.applyFont(), bodyMedium = base.bodyMedium.applyFont(), bodySmall = base.bodySmall.applyFont(),
+        labelLarge = base.labelLarge.applyFont(), labelMedium = base.labelMedium.applyFont(), labelSmall = base.labelSmall.applyFont())
 }
