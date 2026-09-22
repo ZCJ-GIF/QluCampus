@@ -1,0 +1,12 @@
+{
+  "applicationId": "com.qlucampus.app",
+  "versionCode": 9,
+  "versionName": "0.2.7",
+  "title": "齐鲁课表 0.2.7",
+  "updateContent": "齐鲁课表 0.2.7 测试版（Android 8.0 及以上）\n\n- 查询成绩、空教室和导入课表前，已有 VPN 或学校网址可访问时不再重复打开 aTrust；需要时仍可手动打开。\n- 启用本仓库的自动检查更新与应用内下载，在“设置 → 检查更新”使用。先手动覆盖安装本版，后续版本可联网更新。\n- 保留同一包名、签名及本机数据，可覆盖安装此前交付版本。曾主动清空更新地址的用户可填入本仓库链接。\n- Android 无法可靠识别 VPN 所有者；其他 VPN 也会跳过自动打开。aTrust 登录及学校权限仍由本人完成。\n\nAPK 为测试签名版，源码与 APK 对应，遵循 GPL-3.0。基于 HF-CYGG/Dawn-Course，保留原作者署名。\n后台模拟器测试通过；真实手机 aTrust 连接、学校原生课表/成绩/空教室结果仍需手机核验。\n问题反馈：作者微信 a3130149711。\n",
+  "forceUpdate": false,
+  "type": "feature",
+  "date": "2026-09-21",
+  "downloadUrl": "https://github.com/ZCJ-GIF/QluCampus/releases/download/v0.2.7/QluCampus-0.2.7-debug.apk",
+  "sha256": "bbad0682c772587347d4ba69694c218dbcb9ba7709035c8383d1b886a321a6b9"
+}
