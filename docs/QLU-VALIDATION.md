@@ -7,6 +7,7 @@
 - 综合 Android UI 1 项通过：四套风格切换、五个外观开关的实际交互/持久化、背景延伸和深色模式截图；保留原有 GPA、成绩锁、更新设置、日历、周课表、aTrust 帮助和桌面组件的回归断言。首次定位到 Switch 的说明子节点而非 checked 父节点，改用实际可选中语义后通过，未移除断言。
 - 已人工查看模拟器截图：背景延伸到顶栏、日期/时间栏、课程和底部导航；两种主题下课程名、地点均可读。合成条纹图用于检验复杂背景，未使用个人照片或真实学校数据。截图 028-style-*-final.png、028-background-*-final.png。
 - APK 包名 com.qlucampus.app、versionName 0.2.8、versionCode 10，签名与 0.2.7 相同。实际 install -r 覆盖升级，私有文件标记保留并启动；不是数据库迁移测试。数据库仍为 v8，主机 SQL/Room 与双表 XLSX 读取检查通过。
+- 发布后匿名读取更新元数据并下载 APK，SHA-256 与本机包一致。专用模拟器内 0.2.7 实际手动检查发现 0.2.8，下载公开安装包并经应用校验、系统授权和确认完成升级，私有数据标记保留；见 Release 随附的 028-online-validation.txt。
 - 日志：build-028-styles.log、test-028-styles.log、ui-028-styles.log、apk-028-verification.txt。data Android 39 项仍是 0.2.0 历史报告；本轮没有重新验证手机 aTrust 或学校原生接口。
 
 交付目录 E:\Android\releases\0.2.8，附对应 GPL 源码、许可、校验文件及后台报告。公开更新仍使用 ZCJ-GIF/QluCampus；先上传 Release 资产，再发布新版本元数据。
