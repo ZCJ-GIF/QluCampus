@@ -69,7 +69,15 @@ java_pid*.hprof
 /docs/*
 !/docs/QLU-*.md
 /docs/releases/
-/ios-app
+/ios-app/.build/
+/ios-app/DerivedData/
+/ios-app/*.xcodeproj/
+/ios-app/*.xcworkspace/
+*.ipa
+*.xcarchive/
+*.xcresult/
+*.mobileprovision
+*.p12
 /classCrawl-main
 /server/llm-backend/node_modules/
 node_modules/

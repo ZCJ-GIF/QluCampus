@@ -1,0 +1,19 @@
+# Optional signed build with a real App Group. Personal standalone IPA uses project.yml.
+include: project.yml
+targets:
+  QluCampus:
+    dependencies:
+      - target: TodayWidget
+        embed: true
+    info:
+      properties:
+        CampusAppGroup: group.com.qlucampus.ios
+    entitlements:
+      path: Config/App.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.qlucampus.ios]
+  TodayWidget:
+    entitlements:
+      path: Config/Widget.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.qlucampus.ios]

@@ -1,0 +1,84 @@
+name: QluCampus
+options:
+  bundleIdPrefix: com.qlucampus
+  deploymentTarget:
+    iOS: '16.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: '1'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+packages:
+  CampusCore:
+    path: .
+targets:
+  QluCampus:
+    type: application
+    platform: iOS
+    sources: [App, Resources]
+    dependencies:
+      - package: CampusCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.qlucampus.ios
+    info:
+      path: Config/Info.plist
+      properties:
+        CFBundleDisplayName: 齐鲁课表
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        ITSAppUsesNonExemptEncryption: false
+        LSSupportsOpeningDocumentsInPlace: true
+  QluCampusUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: QluCampus
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+  QluCampusTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [AppTests]
+    dependencies:
+      - target: QluCampus
+      - package: CampusCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+  TodayWidget:
+    type: app-extension
+    platform: iOS
+    sources: [Widget]
+    dependencies:
+      - package: CampusCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.qlucampus.ios.today
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    info:
+      path: Config/WidgetInfo.plist
+      properties:
+        CFBundleDisplayName: 今日课表
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        CampusAppGroup: group.com.qlucampus.ios
+schemes:
+  QluCampus:
+    build:
+      targets:
+        QluCampus: all
+    test:
+      targets: [QluCampusTests, QluCampusUITests]
+  TodayWidget:
+    build:
+      targets:
+        TodayWidget: all
