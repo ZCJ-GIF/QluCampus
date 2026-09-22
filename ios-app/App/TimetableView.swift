@@ -132,7 +132,7 @@ struct TableManager: View {
     var body: some View {
         NavigationStack { List {
             ForEach(model.schedules) { table in
-                HStack { Button { model.select(table.id); dismiss() } label: { VStack(alignment: .leading) { Text(table.name); Text(table.term.label).font(.caption) } }; Spacer(); Button("编辑") { edit = table } }
+                HStack { Button { model.select(table.id); dismiss() } label: { VStack(alignment: .leading) { Text(table.name); Text(table.term.label).font(.caption) } }; Spacer(); Button("编辑") { edit = table } }.buttonStyle(.borderless)
             }.onDelete { indices in for i in indices { model.removeTable(model.schedules[i].id) } }
             Button("新建课表") { new = true }
         }.navigationTitle("多课表").toolbar { Button("完成") { dismiss() } } }

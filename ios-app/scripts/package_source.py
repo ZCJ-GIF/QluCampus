@@ -22,4 +22,8 @@ with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED) as archive:
     if lock.exists() and 'ios-app/Package.resolved' not in files:
         archive.write(lock, 'ios-app/Package.resolved')
     archive.write(repo / 'LICENSE', 'LICENSE')
+    for name in ['docs/QLU-IOS-VALIDATION.md', '.github/workflows/ios-ci.yml']:
+        path = repo / name
+        if path.is_file():
+            archive.write(path, name)
 print(destination)
