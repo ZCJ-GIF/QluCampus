@@ -38,6 +38,7 @@ struct SharedFile: Identifiable { var id = UUID(), url: URL }
     @Published var sharedFile: SharedFile? = nil
     @Published var options: RoomOptions? = nil
     @Published var revision = UUID()
+    private var unreadableStore = false
     let api = SchoolAPI()
     let directory: URL
     var appearance: Appearance { db.appearance }
@@ -52,10 +53,11 @@ struct SharedFile: Identifiable { var id = UUID(), url: URL }
             try FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
             let url = self.directory.appendingPathComponent("campus-v1.json")
             if FileManager.default.fileExists(atPath: url.path) { let stored = try JSONDecoder().decode(Database.self, from: Data(contentsOf: url)); try stored.validate(); db = stored }
-        } catch { message = "本地数据读取失败，原文件已保留：\(error.localizedDescription)" }
+        } catch { unreadableStore = true; message = "本地数据读取失败，原文件已保留，暂停写入：\(error.localizedDescription)" }
         if ProcessInfo.processInfo.arguments.contains("--uitest") { seedTestData() }
     }
     func commit(_ edit: (inout Database) throws -> Void) throws {
+        guard !unreadableStore else { throw CampusError.invalid("原本地文件无法读取，已暂停写入以保留数据") }
         var candidate = db; try edit(&candidate); try candidate.validate()
         try JSONEncoder().encode(candidate).write(to: directory.appendingPathComponent("campus-v1.json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         db = candidate
@@ -65,7 +67,7 @@ struct SharedFile: Identifiable { var id = UUID(), url: URL }
         do { try commit { update(&$0.appearance) } } catch { message = error.localizedDescription }
     }
     func ticket() throws -> SessionTicket {
-        guard let account = db.account else { throw CampusError.login }; return SessionTicket(account: account, revision: revision)
+        guard browser == nil, let account = db.account else { throw CampusError.login }; return SessionTicket(account: account, revision: revision)
     }
     func check(_ ticket: SessionTicket) throws { guard db.account == ticket.account, revision == ticket.revision else { throw CampusError.changedAccount } }
     func perform(_ action: @escaping @MainActor () async throws -> Void) {
@@ -74,7 +76,16 @@ struct SharedFile: Identifiable { var id = UUID(), url: URL }
             message = (error as? CampusError)?.localizedDescription ?? "操作失败，旧数据已保留。请先连接手机 aTrust 后重试。\n\(error.localizedDescription)"
         } }
     }
-    func login() { browser = BrowserRoute(url: School.login, login: true) }
+    func login() { openSchoolPage(School.login, login: true) }
+    func openSchoolPage(_ url: URL, login: Bool = false) {
+        // A web page can change cookies/identity. Invalidate requests before allowing navigation;
+        // account is re-established only from the authenticated school DOM via Finish Login.
+        do {
+            revision = UUID(); options = nil; preview = nil
+            try commit { $0.account = nil; $0.active = nil; $0.gradeUnlocked = false }
+            browser = BrowserRoute(url: url, login: login)
+        } catch { message = error.localizedDescription }
+    }
     func acceptLogin(url: URL, student: String) throws {
         guard url.scheme == "https", url.host == "jw.qlu.edu.cn", url.path.hasPrefix("/jwglxt/"), !url.path.lowercased().contains("login"), student.range(of: "^[A-Za-z0-9_-]{5,32}$", options: .regularExpression) != nil else { throw CampusError.invalid("请完成统一认证并进入教务主页，再点击完成登录") }
         revision = UUID(); options = nil; preview = nil

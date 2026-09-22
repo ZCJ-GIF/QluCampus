@@ -27,7 +27,7 @@ struct RoomsView: View {
                     Picker("场地类别", selection: $roomType) { Text("全部").tag(""); ForEach(options.types) { Text($0.label).tag($0.id) } }
                     Button("查询整个时段空闲的教室") { model.queryRooms(query) }.buttonStyle(.borderedProminent).disabled(model.busy || campus != options.selectedCampus || Dates.day(monday) != 1)
                 }
-                Button("打开学校官方查询页面") { model.browser = BrowserRoute(url: URL(string: School.root + School.roomPage)!, login: false) }.regionalText()
+                Button("打开学校官方查询页面") { model.openSchoolPage(URL(string: School.root + School.roomPage)!) }.regionalText()
                 if let result {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("\(result.query.date) · 第 \(result.query.start)–\(result.query.end) 节").font(theme.font(16, bold: true))
