@@ -33,7 +33,7 @@ core-splashscreen = "1.2.0" # Android 12+ SplashScreen 兼容层
 # Security Fixes (Dependabot)
 netty = "4.2.16.Final"
 bouncycastle = "1.83"
-jose4j = "0.9.6"
+jose4j = "0.9.7"
 commons-compress = "1.28.0"
 commons-io = "2.22.0"
 protobuf = "4.35.1"
