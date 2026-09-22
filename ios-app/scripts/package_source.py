@@ -14,7 +14,7 @@ with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED) as archive:
         if path.is_file():
             assert not path.name.endswith(('.ipa', '.p12', '.mobileprovision'))
             archive.write(path, name)
-    for folder in ['QluCampus.xcodeproj', 'Config']:
+    for folder in ['QluCampus.xcodeproj', 'Config', 'Resources/Assets.xcassets']:
         for path in (root / folder).rglob('*'):
             if path.is_file() and 'xcuserdata' not in path.parts:
                 archive.write(path, path.relative_to(repo).as_posix())

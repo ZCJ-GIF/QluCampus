@@ -36,6 +36,7 @@ struct SettingsView: View {
                         Text("背景亮度 \(Int(model.appearance.brightness * 100))%")
                         Slider(value: binding(\.brightness), in: 0.1...1)
                         Toggle("课程颜色适应背景", isOn: binding(\.adaptiveCourses))
+                        Toggle("课程高对比度", isOn: binding(\.highContrast))
                         Toggle("显示课程边缘线", isOn: binding(\.borders))
                         Toggle("显示非本周课程（灰色）", isOn: binding(\.showOtherWeeks))
                     }.listRowBackground(rowBackground)

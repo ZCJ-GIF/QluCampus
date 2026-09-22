@@ -26,6 +26,7 @@
 cd ios-app
 brew install xcodegen
 swift test
+swift scripts/make_icon.swift
 xcodegen generate
 open QluCampus.xcodeproj
 ```

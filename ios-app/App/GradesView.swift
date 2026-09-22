@@ -42,13 +42,13 @@ struct GradesView: View {
         let score = Grades.decimal(course.total)
         let semantic: Color = score.map { $0 >= 60 ? .green : .red } ?? theme.text
         return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) { Text(course.name).font(theme.font(17, bold: true)); Spacer(); Text(score.map { $0 >= 60 ? "合格" : "挂科" } ?? "未判定").font(theme.font(12)).foregroundColor(semantic) }
-            HStack { Text("总评 \(provided(course.total))").foregroundColor(semantic); Spacer(); Text("学分 \(provided(course.details.first?.credits ?? ""))") }
+            HStack(alignment: .top) { Text(course.name).font(theme.font(17, bold: true)); Spacer(); Text(score.map { $0 >= 60 ? "合格" : "挂科" } ?? "未判定").font(theme.font(12)).foregroundColor(score == nil ? nil : semantic) }
+            HStack { Text("总评 \(provided(course.total))").foregroundColor(score == nil ? nil : semantic); Spacer(); Text("学分 \(provided(course.details.first?.credits ?? ""))") }
             Text("绩点 \(provided(course.point?.point ?? "")) · 学分绩点 \(provided(course.point?.weightedPoint ?? ""))").font(theme.font(13))
             if model.db.gradeUnlocked {
                 ForEach(Array(course.details.enumerated()), id: \.offset) { item in HStack { Text(provided(item.element.component)); Spacer(); Text(provided(item.element.score)) }.font(theme.font(13)) }
             }
-        }.padding(15).foregroundColor(theme.text).background(score == nil ? .white.opacity(0.12) : semantic.opacity(0.11), in: RoundedRectangle(cornerRadius: 16))
+        }.padding(15).regionalText().background(score == nil ? .white.opacity(0.12) : semantic.opacity(0.11), in: RoundedRectangle(cornerRadius: 16))
     }
     func provided(_ text: String) -> String { text.isEmpty ? "未提供" : text }
 }

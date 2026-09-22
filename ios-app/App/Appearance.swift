@@ -21,6 +21,11 @@ struct CampusTheme {
     func courseColor(_ course: Course, active: Bool) -> Color {
         guard active else { return Color(hex: appearance.style == "夜色" ? "656B73" : "B0B3BA") }
         let colors: [String]
+        if appearance.highContrast {
+            let colors = ["165A9C", "8B2450", "246341", "704090", "985024", "315C68"]
+            let hash = course.name.utf8.reduce(UInt64(2166136261)) { ($0 ^ UInt64($1)) &* 16777619 }
+            return Color(hex: colors[Int(hash % UInt64(colors.count))])
+        }
         switch appearance.style {
         case "鼠尾草": colors = ["81AA97", "9AAD79", "B1A57E", "829CAF", "AA8E9B"]
         case "奶油杏": colors = ["D7A87A", "CCA4A3", "9DAE88", "96AEC0", "BDA1BD"]
@@ -36,7 +41,7 @@ struct CampusTheme {
         return UIColor(color).luminance > 0.179 ? .black : .white
     }
     func regionalColor(_ frame: CGRect) -> Color {
-        guard appearance.textMode == "自动黑白", appearance.extendBackground, let image, let cg = image.cgImage else { return text }
+        guard appearance.textMode == "自动黑白", let image, let cg = image.cgImage else { return text }
         let screen = UIScreen.main.bounds
         let scale = max(screen.width / CGFloat(cg.width), screen.height / CGFloat(cg.height))
         let left = (CGFloat(cg.width) * scale - screen.width) / 2, top = (CGFloat(cg.height) * scale - screen.height) / 2
@@ -71,13 +76,14 @@ extension UIColor {
 struct RegionalText: ViewModifier {
     @Environment(\.campusTheme) var theme
     @State private var frame = CGRect.zero
+    var useWallpaper = true
     func body(content: Content) -> some View {
-        content.foregroundColor(theme.regionalColor(frame)).background(GeometryReader { geo in
+        content.foregroundColor(useWallpaper ? theme.regionalColor(frame) : theme.text).background(GeometryReader { geo in
             Color.clear.onAppear { frame = geo.frame(in: .global) }.onChange(of: geo.frame(in: .global)) { frame = $0 }
         })
     }
 }
-extension View { func regionalText() -> some View { modifier(RegionalText()) } }
+extension View { func regionalText(useWallpaper: Bool = true) -> some View { modifier(RegionalText(useWallpaper: useWallpaper)) } }
 
 struct CampusBackground: View {
     @Environment(\.campusTheme) var theme

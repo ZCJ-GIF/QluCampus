@@ -30,11 +30,12 @@ struct CampusRoot: View {
                     tabButton(1, "成绩", "chart.bar")
                     tabButton(2, "空教室", "door.left.hand.open")
                     Button { settings = true } label: { VStack(spacing: 4) { Image(systemName: "gearshape"); Text("设置").font(theme.font(11)) }.frame(maxWidth: .infinity).padding(.vertical, 9) }.accessibilityIdentifier("settingsTab")
-                }.font(theme.font(19)).regionalText().background(.white.opacity(model.appearance.extendBackground ? 0.12 : 0.92)).clipShape(RoundedRectangle(cornerRadius: 22))
+                }.font(theme.font(19)).regionalText(useWallpaper: model.appearance.extendBackground).background(model.appearance.extendBackground ? .white.opacity(0.12) : theme.background[0].opacity(0.95)).clipShape(RoundedRectangle(cornerRadius: 22))
             }
             if model.busy { VStack { ProgressView().padding(); Text("正在读取学校数据…").font(.footnote) }.padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18)).allowsHitTesting(false) }
         }
         .environment(\.campusTheme, theme)
+        .preferredColorScheme(model.appearance.style == "夜色" ? .dark : .light)
         .font(theme.font(15)).tint(theme.text)
         .sheet(isPresented: $settings) { SettingsView().environmentObject(model).environment(\.campusTheme, theme) }
         .sheet(item: $model.browser) { route in SchoolBrowser(route: route).environmentObject(model) }

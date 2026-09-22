@@ -7,7 +7,7 @@ import UserNotifications
 
 struct Appearance: Codable, Equatable {
     var style = "Wake Up", font = "系统", textMode = "自动黑白", textHex = "#202124"
-    var fontSize: Double = 11, showOtherWeeks = true, borders = false, adaptiveCourses = true
+    var fontSize: Double = 11, showOtherWeeks = true, borders = false, adaptiveCourses = true, highContrast = false
     var extendBackground = true, blur: Double = 0, brightness: Double = 1
     var backgroundFile: String? = nil
     var reminders = false
@@ -25,10 +25,20 @@ struct Database: Codable {
     }
 }
 struct ImportPreview: Identifiable {
-    var id = UUID(), ticket: SessionTicket, table: Timetable, destination: UUID?
+    var id = UUID()
+    var ticket: SessionTicket
+    var table: Timetable
+    var destination: UUID?
 }
-struct BrowserRoute: Identifiable { var id = UUID(), url: URL, login: Bool }
-struct SharedFile: Identifiable { var id = UUID(), url: URL }
+struct BrowserRoute: Identifiable {
+    var id = UUID()
+    var url: URL
+    var login: Bool
+}
+struct SharedFile: Identifiable {
+    var id = UUID()
+    var url: URL
+}
 
 @MainActor final class AppModel: ObservableObject {
     @Published private(set) var db = Database()
