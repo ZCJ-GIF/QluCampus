@@ -20,6 +20,16 @@
 
 源码可以在 Windows 编辑；iOS SDK 编译、单元测试和 iPhone 模拟器在 GitHub Actions 的 macOS 环境运行，不占用本机前台。工作流见 `../.github/workflows/ios-ci.yml`。构建产物中的 `unsigned.ipa` 是未签名真机包，必须用你自己的 Apple 签名后才能安装，不能直接点击 IPA 安装。无需为了开发此个人版先上架 App Store。
 
+### Windows 个人安装
+
+1. 从本项目 iOS 发布页下载 `QluCampus-iOS-0.1.0-unsigned.ipa`。
+2. 可使用 [Sideloadly 官方 Windows 版](https://sideloadly.io/) 完成个人签名。按其官网说明准备所需 Apple 驱动，连接并信任你的 iPhone。
+3. 在该工具选择 iPhone、加载 IPA，用你自己的 Apple 账号完成签名和安装；验证在工具中自行完成。
+4. 根据 iPhone 系统提示信任个人开发者，并在需要时启用开发者模式。首次进入齐鲁课表后连接 aTrust，再在学校页面登录导入。
+5. 免费账号的签名需要定期刷新；Sideloadly 官网说明有效期为 7 天，并提供自动续签功能。后续版本沿用同一账号和应用标识覆盖安装，避免卸载导致本机数据丢失。
+
+这是可选的第三方个人安装途径，尚未在你的 iPhone 上实测；构建过程本身未使用 Apple 账号或签名证书。Apple 官方的设备测试账号说明见 [Developer account overview](https://developer.apple.com/help/account/basics/about-your-developer-account)。
+
 ## 本机 Mac 构建（有 Mac 时）
 
 ```sh

@@ -29,6 +29,8 @@ targets:
       path: Config/Info.plist
       properties:
         CFBundleDisplayName: 齐鲁课表
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -69,6 +71,8 @@ targets:
       path: Config/WidgetInfo.plist
       properties:
         CFBundleDisplayName: 今日课表
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
         CampusAppGroup: group.com.qlucampus.ios
