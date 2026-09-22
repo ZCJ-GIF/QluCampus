@@ -53,7 +53,7 @@ buildscript {
             force("org.apache.commons:commons-compress:1.28.0")
             
             // 强制 Protobuf-java (>= 3.25.5)
-            force("com.google.protobuf:protobuf-java:4.35.1")
+            force("com.google.protobuf:protobuf-java:4.36.2")
             
             // 强制 JDOM2 (>= 2.0.6.1)
             force("org.jdom:jdom2:2.0.6.1")
