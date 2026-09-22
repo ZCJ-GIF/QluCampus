@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application>
+        <receiver android:name=".notification.ReminderReceiver"
+            android:enabled="true"
+            android:exported="false">
+        </receiver>
+
+        <receiver android:name=".notification.SilenceReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.dawncourse.action.MUTE" />
+                <action android:name="com.dawncourse.action.UNMUTE" />
+            </intent-filter>
+        </receiver>
+
+        <receiver android:name=".notification.PersistentNotificationRefreshReceiver"
+            android:enabled="true"
+            android:exported="false" />
+    </application>
+</manifest>

@@ -1,0 +1,2090 @@
+package com.dawncourse.feature.import_module
+
+import android.app.Application
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.dawncourse.core.domain.model.ImportSourceType
+import com.dawncourse.core.domain.model.PageFingerprint
+import com.dawncourse.core.domain.model.ParseFailureType
+import com.dawncourse.core.domain.model.ParseReportPayload
+import com.dawncourse.core.domain.model.ParseSessionContext
+import com.dawncourse.core.domain.model.ParserAttemptReport
+import com.dawncourse.core.domain.model.SanitizedSample
+import com.dawncourse.core.domain.model.SanitizedDiagnosticSample
+import com.dawncourse.core.domain.model.SchoolSystemType
+import com.dawncourse.core.domain.model.ImportCommitImpact
+import com.dawncourse.core.domain.model.ImportCommitRequest
+import com.dawncourse.core.domain.model.ImportCommitResult
+import com.dawncourse.core.domain.model.ImportDestination
+import com.dawncourse.core.domain.model.NewSemesterSpec
+import com.dawncourse.core.domain.model.SectionTime
+import com.dawncourse.core.domain.model.ScriptSchoolContext
+import com.dawncourse.core.domain.repository.DiagnosticSampleRepository
+import com.dawncourse.core.domain.repository.ImportCommitRepository
+import com.dawncourse.core.domain.repository.TimetableProfileRepository
+import com.dawncourse.core.domain.repository.SettingsRepository
+import com.dawncourse.core.domain.repository.ScriptSyncRepository
+import com.dawncourse.core.domain.usecase.FetchLlmParseStatusUseCase
+import com.dawncourse.core.domain.usecase.ReportParseResultUseCase
+import com.dawncourse.core.domain.usecase.SubmitLlmParseTaskUseCase
+import com.dawncourse.feature.import_module.engine.QiangZhiApiEngine
+import com.dawncourse.feature.import_module.engine.ParserPlanEntry
+import com.dawncourse.feature.import_module.engine.ParserSelectionPolicy
+import com.dawncourse.feature.import_module.engine.ScriptEngine
+import com.dawncourse.feature.import_module.model.ParsedCourse
+import com.dawncourse.feature.import_module.model.SectionRange
+import com.dawncourse.feature.import_module.model.XiaoaiCourse
+import com.dawncourse.feature.import_module.model.convertXiaoaiCoursesToParsedCourses
+import com.dawncourse.feature.import_module.model.parseIcsToParsedCourses
+import com.dawncourse.feature.import_module.model.parseParsedCoursesFromRaw
+import com.dawncourse.feature.import_module.model.parseXiaoaiProviderResult
+import com.dawncourse.feature.import_module.model.toDomainCourse
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.URI
+import java.net.URLEncoder
+import java.security.MessageDigest
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.time.temporal.TemporalAdjusters
+import java.util.UUID
+import javax.inject.Inject
+
+enum class ImportStep {
+    Input,      // 步骤一：输入源选择
+    WebView,    // 步骤二：网页抓取
+    Review      // 步骤三：预览与确认
+}
+
+enum class ParsePipelineStage {
+    IDLE,
+    LOCAL_PARSING,
+    WAITING_USER_CONSENT,
+    CLOUD_PARSING,
+    CLOUD_SUCCESS,
+    CLOUD_FAILED
+}
+
+/**
+ * 导入页面的 UI 状态
+ *
+ * @property step 当前所处的步骤
+ * @property htmlContent 解析的 HTML 原始内容
+ * @property webUrl 当前 WebView 加载的 URL
+ * @property parsedCourses 已解析出的课程列表 (临时数据)
+ * @property semesterStartDate 学期开始日期 (时间戳)
+ * @property weekCount 学期总周数
+ * @property detectedMaxSection 检测到的最大节次 (用于自动设置作息表)
+ * @property courseDuration 单节课时长 (分钟)
+ * @property breakDuration 小课间时长 (分钟)
+ * @property bigBreakDuration 大课间时长 (分钟)
+ * @property sectionsPerBigSection 每个大节包含的小节数
+ * @property amStartTime 上午第一节开始时间
+ * @property pmStartTime 下午第一节开始时间
+ * @property pmStartSection 下午第一节的节次号
+ * @property eveStartTime 晚上第一节开始时间
+ * @property eveStartSection 晚上第一节的节次号
+ * @property sectionTimes 生成的或用户修改的具体作息时间表
+ * @property resultText 解析结果或错误提示文本
+ * @property isLoading 是否正在进行耗时操作 (加载网页、执行解析)
+ * @property showLlmConsentDialog 是否展示云端解析上传确认弹窗
+ * @property llmConsentPreview 将上传内容的预览文本
+ * @property llmConsentLength 将上传内容的总长度
+ * @property llmConsentChecked 用户是否勾选“已知情并同意”
+ * @property llmConsentSourceUrl 本次上传对应的网页来源
+ * @property llmConsentSchoolName 用户填写的学校名称（用于归类队列）
+ */
+data class ImportUiState(
+    val step: ImportStep = ImportStep.Input,
+    val htmlContent: String = "",
+    val webUrl: String = "",
+    val parsedCourses: List<ParsedCourse> = emptyList(),
+    
+    // 学期设置
+    val semesterStartDate: Long = System.currentTimeMillis(),
+    val weekCount: Int = 20,
+    
+    // 时间与节次设置
+    val detectedMaxSection: Int = 12,
+    val courseDuration: Int = 45,
+    val breakDuration: Int = 10,
+    val bigBreakDuration: Int = 20, // 大课间 (如第2-3节之间) 的时长
+    val sectionsPerBigSection: Int = 2, // 多少节课算一个大节 (通常为2)
+    
+    // 关键时间节点设置
+    val amStartTime: LocalTime = LocalTime.of(8, 0),
+    val pmStartTime: LocalTime = LocalTime.of(14, 0),
+    val pmStartSection: Int = 5,
+    val eveStartTime: LocalTime = LocalTime.of(19, 0),
+    val eveStartSection: Int = 9,
+
+    val sectionTimes: List<SectionTime> = emptyList(),
+
+    val resultText: String = "",
+    val isLoading: Boolean = false,
+    val parsePipelineStage: ParsePipelineStage = ParsePipelineStage.IDLE,
+    val parseFailureType: String = "",
+    val latestLlmTaskId: String = "",
+    val showLlmConsentDialog: Boolean = false,
+    val llmConsentPreview: String = "",
+    val llmConsentLength: Int = 0,
+    val llmConsentChecked: Boolean = false,
+    val llmConsentSourceUrl: String = "",
+    val llmConsentSchoolName: String = "",
+    /** 页面进入时捕获的默认 Profile，解析期间切换课表不会改变该值。 */
+    val capturedProfileId: Long? = null,
+    /** 当前提交落点；课程写入时由 ImportCommitRepository 再次强制校验。 */
+    val destination: ImportDestination? = null,
+    /** 可选 Profile/学期列表仅用于前台选择，不保存任何凭据。 */
+    val profileTargets: List<ImportProfileTarget> = emptyList(),
+    /** 新建 Profile 时的展示名称。 */
+    val newProfileName: String = "",
+    /** 覆盖导入在提交前必须展示此量化影响。 */
+    val pendingOverwriteImpact: ImportCommitImpact? = null,
+)
+
+/** 导入预览可选择的既有 Profile 与其学期，禁止 UI 直接访问 DAO。 */
+data class ImportProfileTarget(
+    val profileId: Long,
+    val profileName: String,
+    val semesters: List<ImportSemesterTarget>,
+)
+
+/** 明确覆盖目标需要同时携带 Profile 与 Semester，避免仅凭学期 ID 猜测归属。 */
+data class ImportSemesterTarget(
+    val semesterId: Long,
+    val semesterName: String,
+)
+
+private data class LlmRepairContext(
+    val scriptName: String = "",
+    val scriptVersion: Int = 0,
+    val scriptSource: String = "",
+    val failureType: String = "unsupported_format",
+    val attemptedParsers: List<String> = emptyList(),
+    val forceCloudRepair: Boolean = false
+)
+
+private data class LlmFallbackResult(
+    val courses: List<ParsedCourse> = emptyList(),
+    val taskId: String = "",
+    val failureReason: String = ""
+)
+
+sealed interface ImportEvent {
+    data object Success : ImportEvent
+}
+
+/**
+ * 导入功能 ViewModel
+ *
+ * 负责处理课程导入的全流程业务逻辑：
+ * 1. 网页源码获取与多策略解析 (支持 JSON/HTML/JS 脚本)
+ * 2. 课程数据预览与编辑 (增删改)
+ * 3. 学期与作息时间配置 (智能推断与手动调整)
+ * 4. 最终数据入库 (同步更新 Room 数据库和 DataStore 设置)
+ */
+@HiltViewModel
+class ImportViewModel @Inject constructor(
+    private val application: Application,
+    private val scriptEngine: ScriptEngine,
+    private val qiangZhiApiEngine: QiangZhiApiEngine,
+    private val diagnosticSampleRepository: DiagnosticSampleRepository,
+    private val importCommitRepository: ImportCommitRepository,
+    private val timetableProfileRepository: TimetableProfileRepository,
+    private val settingsRepository: SettingsRepository,
+    private val scriptSyncRepository: ScriptSyncRepository,
+    private val submitLlmParseTaskUseCase: SubmitLlmParseTaskUseCase,
+    private val fetchLlmParseStatusUseCase: FetchLlmParseStatusUseCase,
+    private val reportParseResultUseCase: ReportParseResultUseCase
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(ImportUiState())
+    val uiState = _uiState.asStateFlow()
+
+    private val _events = MutableSharedFlow<ImportEvent>()
+    val events = _events.asSharedFlow()
+
+    // 用户确认前暂存云端解析的完整内容，避免在 UI 状态中存放大文本
+    private var pendingLlmContent: String = ""
+    private var pendingLlmRepairContext: LlmRepairContext = LlmRepairContext()
+    // 本地脚本降级提示节流时间，避免一次提取触发多次相同提示
+    private var lastLocalScriptHintAt: Long = 0L
+    // 当前脚本拉取任务 ID（用于“按任务去重统计”）
+    private var currentScriptPullTaskId: String = ""
+    private var currentParseSessionId: String = ""
+    private var currentParseStartedAt: Long = 0L
+    private val clientVersion by lazy { buildClientVersion() }
+    
+    init {
+        // 初始化学期开始日期为本周一 (符合大多数导入场景)
+        val today = LocalDate.now()
+        val monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        val timestamp = monday.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        _uiState.update { it.copy(semesterStartDate = timestamp) }
+        viewModelScope.launch {
+            val lastImportUrl = settingsRepository.settings.first().lastImportUrl
+            if (!lastImportUrl.isNullOrBlank()) {
+                _uiState.update { it.copy(webUrl = lastImportUrl) }
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            diagnosticSampleRepository.cleanupExpired()
+        }
+    }
+
+    /**
+     * 设置当前导入步骤
+     *
+     * 切换步骤时会重置部分临时状态，如解析结果和错误信息，确保流程清晰。
+     */
+    fun setStep(step: ImportStep) {
+        val leavingSessionId = currentParseSessionId.takeIf { it.isNotBlank() }
+        currentParseSessionId = ""
+        if (leavingSessionId != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                diagnosticSampleRepository.clearRawForSession(leavingSessionId)
+            }
+        }
+        _uiState.update { 
+            it.copy(
+                step = step,
+                parsedCourses = emptyList(),
+                htmlContent = "",
+                resultText = "",
+                isLoading = false,
+                parsePipelineStage = ParsePipelineStage.IDLE,
+                parseFailureType = "",
+                latestLlmTaskId = "",
+                showLlmConsentDialog = false,
+                llmConsentPreview = "",
+                llmConsentLength = 0,
+                llmConsentChecked = false,
+                llmConsentSourceUrl = "",
+                llmConsentSchoolName = ""
+            )
+        }
+    }
+
+    fun updateWebUrl(url: String) {
+        _uiState.update { it.copy(webUrl = url) }
+    }
+
+    fun updateHtmlContent(value: String) {
+        _uiState.update { it.copy(htmlContent = value) }
+    }
+
+    fun updateResultText(value: String) {
+        _uiState.update { it.copy(resultText = value) }
+    }
+    
+    /**
+     * 更新学期设置
+     *
+     * @param startDate 学期开始时间戳 (UTC)
+     * @param weeks 学期总周数
+     */
+    fun updateSemesterSettings(startDate: Long, weeks: Int) {
+        _uiState.update { it.copy(semesterStartDate = startDate, weekCount = weeks) }
+    }
+    
+    /**
+     * 更新全局时间设置
+     *
+     * @param maxSection 最大节次
+     * @param duration 单节时长
+     * @param breakDuration 小课间
+     * @param bigBreakDuration 大课间
+     * @param sectionsPerBigSection 大节包含小节数
+     */
+    fun updateTimeSettings(maxSection: Int, duration: Int, breakDuration: Int, bigBreakDuration: Int, sectionsPerBigSection: Int) {
+        _uiState.update { 
+            it.copy(
+                detectedMaxSection = maxSection, 
+                courseDuration = duration, 
+                breakDuration = breakDuration,
+                bigBreakDuration = bigBreakDuration,
+                sectionsPerBigSection = sectionsPerBigSection
+            ) 
+        }
+    }
+    
+    /**
+     * 开始一次脚本拉取任务
+     *
+     * 每次用户点击“一键提取”都会生成新的任务 ID，
+     * 该 ID 会随脚本拉取上报到服务端，用于按任务去重统计。
+     */
+    fun beginScriptPullTask() {
+        currentScriptPullTaskId = "pull_${System.currentTimeMillis()}_${(0..9999).random()}"
+    }
+
+    /**
+     * 解析当前设备应使用的解析器执行计划
+     *
+     * 优先使用云端 manifest 下发的候选（含学校专属脚本），失败时回落到内置列表，
+     * 以守住「核心功能离线可用」这一项目底线。
+     */
+    private suspend fun resolveParserPlan(): List<ParserPlanEntry> {
+        return try {
+            ParserSelectionPolicy.buildPlan(
+                candidates = scriptSyncRepository.listParserCandidates(),
+                supportedParserApiVersion = ScriptEngine.SUPPORTED_PARSER_API_VERSION,
+                supportedContractVersion = ScriptEngine.SUPPORTED_CONTRACT_VERSION
+            )
+        } catch (_: Exception) {
+            ParserSelectionPolicy.fallbackPlan()
+        }
+    }
+
+    /**
+     * 按 manifest 声明的依赖顺序拉取依赖脚本内容
+     *
+     * 单个依赖拉取失败不阻断解析：解析器可能本就不依赖它，或已内联所需函数。
+     */
+    private suspend fun loadDependencyScripts(
+        dependencies: List<com.dawncourse.core.domain.model.ScriptDependency>
+    ): List<String> {
+        return dependencies.mapNotNull { dependency ->
+            try {
+                scriptSyncRepository.getScript(
+                    scriptName = dependency.name,
+                    category = dependency.category,
+                    pullTaskId = currentScriptPullTaskId
+                ).takeIf { it.isNotBlank() }
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    /** 隔离失败 staging；若失败的是 active V2 release，则回滚 previous stable。 */
+    private suspend fun handlePreparedScriptFailure(
+        result: com.dawncourse.core.domain.repository.ScriptFetchResult,
+        reason: String
+    ) {
+        if (!scriptSyncRepository.quarantinePreparedScript(result, reason)) {
+            scriptSyncRepository.rollbackActiveScript(result, reason)
+        }
+    }
+
+    /**
+     * 获取共享执行契约（script_host.js）源码
+     *
+     * 与解析器脚本走同一条「云端 → 本地缓存 → assets 兜底」链路，
+     * 因此可以独立热更，且在断网时仍有内置副本可用。
+     */
+    private suspend fun getScriptHostSource(): String {
+        return try {
+            scriptSyncRepository.getScript(
+                scriptName = ScriptEngine.SCRIPT_HOST_NAME,
+                category = ScriptEngine.SCRIPT_HOST_CATEGORY,
+                pullTaskId = currentScriptPullTaskId
+            )
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    suspend fun getScriptContent(scriptName: String, category: String = "js"): String {
+        val fetchResult = scriptSyncRepository.getScriptWithInfo(
+            scriptName = scriptName,
+            category = category,
+            pullTaskId = currentScriptPullTaskId
+        )
+        if (!fetchResult.fromCloud && fetchResult.content.isNotBlank()) {
+            val now = System.currentTimeMillis()
+            if (now - lastLocalScriptHintAt > 5000) {
+                lastLocalScriptHintAt = now
+                _uiState.update {
+                    it.copy(
+                        resultText = "云端脚本拉取失败，正在使用本地脚本（可能不是最新版本）"
+                    )
+                }
+            }
+        }
+        return fetchResult.content
+    }
+
+    /**
+     * 更新作息时间节点设置 (上下午、晚上开始时间)
+     */
+    fun updateTimeNodeSettings(
+        amStart: LocalTime,
+        pmStart: LocalTime,
+        pmStartSec: Int,
+        eveStart: LocalTime,
+        eveStartSec: Int
+    ) {
+        _uiState.update {
+            it.copy(
+                amStartTime = amStart,
+                pmStartTime = pmStart,
+                pmStartSection = pmStartSec,
+                eveStartTime = eveStart,
+                eveStartSection = eveStartSec
+            )
+        }
+    }
+
+    fun updateSectionTimes(times: List<SectionTime>) {
+        _uiState.update { it.copy(sectionTimes = times) }
+    }
+
+    /**
+     * 更新单节作息时间 (用户手动微调)
+     */
+    fun updateSectionTime(index: Int, time: SectionTime) {
+        _uiState.update { state ->
+            if (index < 0) return@update state
+            val current = state.sectionTimes.toMutableList()
+            if (index >= current.size) {
+                return@update state
+            }
+            current[index] = time
+            state.copy(sectionTimes = current)
+        }
+    }
+
+    /**
+     * 更新解析后的课程信息 (预览阶段编辑功能)
+     */
+    fun updateParsedCourse(index: Int, course: ParsedCourse) {
+        _uiState.update { state ->
+            val newCourses = state.parsedCourses.toMutableList()
+            if (index in newCourses.indices) {
+                newCourses[index] = course
+            }
+            state.copy(parsedCourses = newCourses)
+        }
+    }
+
+    /**
+     * 删除解析后的课程 (预览阶段删除功能)
+     */
+    fun deleteParsedCourse(index: Int) {
+        _uiState.update { state ->
+            val newCourses = state.parsedCourses.toMutableList()
+            if (index in newCourses.indices) {
+                newCourses.removeAt(index)
+            }
+            state.copy(parsedCourses = newCourses, resultText = "已删除 1 个课程")
+        }
+    }
+
+    /**
+     * 解析 WebView 返回的 JSON/HTML 结果
+     *
+     * 智能识别策略：
+     * 1. 优先尝试作为 JSON 直接解析 (适配小爱课程表/内部格式)
+     * 2. 如果失败，尝试作为 HTML 使用内置脚本逐个解析 (适配正方、青果等教务)
+     */
+    fun parseResultFromWebView(
+        raw: String,
+        allowDiagnosticsUpload: Boolean = true,
+        failureTypeHint: String? = null,
+        forceCloudRepair: Boolean = false
+    ) {
+        viewModelScope.launch {
+            currentParseSessionId = UUID.randomUUID().toString()
+            currentParseStartedAt = System.currentTimeMillis()
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    resultText = "正在解析...",
+                    parsedCourses = emptyList(),
+                    parsePipelineStage = ParsePipelineStage.LOCAL_PARSING,
+                    parseFailureType = "",
+                    latestLlmTaskId = ""
+                )
+            }
+            // 每个 parser 都在隔离运行时中执行；诊断随执行结果返回并在本次导入内累积，
+            // 避免后续 parser 覆盖前一个 parser 的丢弃记录。
+            val allDiagnostics = mutableListOf<String>()
+            try {
+                var repairContext: LlmRepairContext? = null
+                val parsed = withContext(Dispatchers.IO) {
+                    var hasParserCrash = false
+                    var hasAnyParserAttempt = false
+                    val attemptedParsers = mutableListOf<String>()
+                    var lastScriptName = ""
+                    var lastScriptVersion = 0
+                    var lastScriptSource = ""
+                    var successfulScriptName = ""
+                    val currentUrl = _uiState.value.webUrl
+                    if (qiangZhiApiEngine.isQiangZhiHost(currentUrl)) {
+                        val qiangZhiCourses = qiangZhiApiEngine.parseHtmlWithJsoup(raw)
+                        if (qiangZhiCourses.isNotEmpty()) {
+                            return@withContext qiangZhiCourses
+                        }
+                    }
+                    if (raw.contains("qiangzhi_direct")) {
+                        return@withContext qiangZhiApiEngine.parseJson(raw)
+                    }
+                    var courses = parseParsedCoursesFromRaw(raw)
+                    if (courses.isEmpty()) {
+                        val xiaoai = parseXiaoaiProviderResult(raw)
+                        courses = convertXiaoaiCoursesToParsedCourses(xiaoai.courses)
+                    }
+                    if (courses.isEmpty()) {
+                        // 解析器候选由云端 manifest 驱动，使服务端按 schoolId 发布的
+                        // 学校专属脚本能够被真正执行；manifest 不可用时回落到内置列表
+                        val parserPlan = resolveParserPlan()
+                        val runParserRound: suspend (Boolean) -> List<ParsedCourse> = runParserRound@{ _ ->
+                            val scriptHostSource = getScriptHostSource()
+                            for (planEntry in parserPlan) {
+                                val parserName = planEntry.scriptName
+                                var preparedResult: com.dawncourse.core.domain.repository.ScriptFetchResult? = null
+                                hasAnyParserAttempt = true
+                                if (!attemptedParsers.contains(parserName)) {
+                                    attemptedParsers.add(parserName)
+                                }
+                                try {
+                                    val fetchResult = planEntry.descriptor?.let { descriptor ->
+                                        scriptSyncRepository.prepareScriptCandidate(
+                                            descriptor = descriptor,
+                                            pullTaskId = currentScriptPullTaskId
+                                        )
+                                    } ?: scriptSyncRepository.getScriptWithInfo(
+                                            scriptName = parserName,
+                                            category = "parsers",
+                                            pullTaskId = currentScriptPullTaskId
+                                        )
+                                    preparedResult = fetchResult
+                                    val script = fetchResult.content
+                                    lastScriptName = parserName
+                                    lastScriptSource = fetchResult.source
+                                    lastScriptVersion = fetchResult.version.takeIf { it > 0 }
+                                        ?: scriptSyncRepository.getScriptVersion(parserName, "parsers")
+                                        ?: 0
+                                    val dependencyScripts = fetchResult.dependencyContents.ifEmpty {
+                                        loadDependencyScripts(planEntry.dependencies)
+                                    }
+                                    val execution = scriptEngine.parseHtml(
+                                        script = script,
+                                        html = raw,
+                                        harnessSource = scriptHostSource,
+                                        dependencies = dependencyScripts
+                                    )
+                                    allDiagnostics.addAll(execution.diagnostics)
+                                    val jsonResult = execution.raw
+                                    val parsedDirect = parseParsedCoursesFromRaw(jsonResult)
+                                    if (parsedDirect.isNotEmpty()) {
+                                        scriptSyncRepository.activatePreparedScript(fetchResult)
+                                        successfulScriptName = parserName
+                                        reportParserParseFeedback(parserName, true, null, currentUrl)
+                                        return@runParserRound parsedDirect
+                                    }
+                                    val xiaoai = parseXiaoaiProviderResult(jsonResult)
+                                    val parsedFromXiaoai = convertXiaoaiCoursesToParsedCourses(xiaoai.courses)
+                                    if (parsedFromXiaoai.isNotEmpty()) {
+                                        scriptSyncRepository.activatePreparedScript(fetchResult)
+                                        successfulScriptName = parserName
+                                        reportParserParseFeedback(parserName, true, null, currentUrl)
+                                        return@runParserRound parsedFromXiaoai
+                                    }
+                                    // 使用契约给出的结构化错误码上报，便于服务端按 empty_result /
+                                    // schema_invalid / duplicate_ratio_high 分别归类失败原因
+                                    reportParserParseFeedback(
+                                        parserName,
+                                        false,
+                                        execution.errorCode.ifBlank { ScriptEngine.ERROR_EMPTY_RESULT },
+                                        currentUrl
+                                    )
+                                    handlePreparedScriptFailure(
+                                        fetchResult,
+                                        execution.errorCode.ifBlank { ScriptEngine.ERROR_EMPTY_RESULT }
+                                    )
+                                } catch (e: ScriptEngine.ScriptExecutionException) {
+                                    preparedResult?.let { result ->
+                                        handlePreparedScriptFailure(result, e.errorCode)
+                                    }
+                                    reportParserParseFeedback(
+                                        parserName,
+                                        false,
+                                        e.errorCode,
+                                        currentUrl
+                                    )
+                                    hasParserCrash = true
+                                } catch (e: Throwable) {
+                                    preparedResult?.let { result ->
+                                        handlePreparedScriptFailure(
+                                            result,
+                                            e.message ?: e::class.java.simpleName
+                                        )
+                                    }
+                                    reportParserParseFeedback(
+                                        parserName,
+                                        false,
+                                        e.message ?: e::class.java.simpleName,
+                                        currentUrl
+                                    )
+                                    hasParserCrash = true
+                                }
+                            }
+                            emptyList()
+                        }
+                        courses = runParserRound(false)
+                        if (courses.isEmpty() && hasAnyParserAttempt) {
+                            courses = runParserRound(true)
+                        }
+                    }
+                    if (courses.isNotEmpty() && successfulScriptName.isNotBlank()) {
+                        reportParseSessionFeedback(
+                            scriptName = successfulScriptName,
+                            success = true,
+                            failureType = null,
+                            schoolSystemType = detectSchoolSystemTypeForLlm(raw, currentUrl),
+                            attemptedParsers = attemptedParsers.toList(),
+                            sourceUrl = currentUrl,
+                            allowDiagnosticsUpload = allowDiagnosticsUpload,
+                            raw = raw
+                        )
+                    }
+                    if (courses.isEmpty()) {
+                        val hintedFailureType = normalizeRepairFailureHint(failureTypeHint)
+                        val failureType = when {
+                            hintedFailureType.isNotBlank() -> hintedFailureType
+                            hasParserCrash -> "parser_crash"
+                            hasAnyParserAttempt && isRepairableTimetableContent(raw, currentUrl) -> "parser_empty"
+                            raw.isBlank() -> "extractor_empty"
+                            else -> "unsupported_format"
+                        }
+                        val selectedScript = selectParserForRepair(
+                            currentUrl = currentUrl,
+                            content = raw,
+                            attemptedParsers = attemptedParsers,
+                            fallback = lastScriptName
+                        )
+                        repairContext = LlmRepairContext(
+                            scriptName = selectedScript,
+                            scriptVersion = if (selectedScript == lastScriptName) lastScriptVersion else 0,
+                            scriptSource = lastScriptSource,
+                            failureType = failureType,
+                            attemptedParsers = attemptedParsers.toList(),
+                            forceCloudRepair = forceCloudRepair
+                        )
+                        if (selectedScript.isNotBlank()) {
+                            reportParseSessionFeedback(
+                                scriptName = selectedScript,
+                                success = false,
+                                failureType = failureType,
+                                schoolSystemType = detectSchoolSystemTypeForLlm(raw, currentUrl),
+                                attemptedParsers = attemptedParsers.toList(),
+                                sourceUrl = currentUrl,
+                                allowDiagnosticsUpload = allowDiagnosticsUpload,
+                                raw = raw
+                            )
+                        }
+                    }
+                    courses
+                }
+
+                val droppedCount = allDiagnostics.size
+                val droppedNote = if (droppedCount > 0) {
+                    "\n（另有 $droppedCount 条记录因周次/节次识别失败被跳过；如有课程缺失，请在 issue 中附上脱敏后的页面结构）"
+                } else {
+                    ""
+                }
+
+                if (parsed.isEmpty()) {
+                    val context = repairContext
+                    if (context != null && shouldOfferCloudRepair(
+                            failureType = context.failureType,
+                            raw = raw,
+                            sourceUrl = _uiState.value.webUrl,
+                            forceOffer = context.forceCloudRepair
+                        )
+                    ) {
+                        requestLlmConsent(raw, context)
+                        return@launch
+                    }
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            parsePipelineStage = ParsePipelineStage.IDLE,
+                            parseFailureType = context?.failureType ?: "",
+                            resultText = "未识别到课程数据。请确认：\n1. 已登录教务系统\n2. 位于个人课表页面\n3. 页面已完全加载$droppedNote"
+                        )
+                    }
+                } else {
+                    val lastUrl = _uiState.value.webUrl
+                    if (lastUrl.isNotBlank()) {
+                        settingsRepository.setLastImportUrl(lastUrl)
+                    }
+                    val maxSection = parsed.maxOfOrNull { it.endSection } ?: 12
+                    val safeMaxSection = maxSection.coerceAtLeast(4)
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            parsedCourses = parsed,
+                            parsePipelineStage = ParsePipelineStage.IDLE,
+                            parseFailureType = "",
+                            step = ImportStep.Review,
+                            detectedMaxSection = safeMaxSection,
+                            sectionTimes = generateDefaultSectionTimes(it, safeMaxSection),
+                            resultText = "成功解析 ${parsed.size} 个课程段$droppedNote"
+                        )
+                    }
+                }
+            } catch (_: ScriptEngine.ScriptExecutionException) {
+                val selectedScript = selectParserForRepair(_uiState.value.webUrl, raw, emptyList(), "")
+                if (selectedScript.isNotBlank()) {
+                    reportParseSessionFeedback(
+                        scriptName = selectedScript,
+                        success = false,
+                        failureType = "parser_crash",
+                        schoolSystemType = detectSchoolSystemTypeForLlm(raw, _uiState.value.webUrl),
+                        attemptedParsers = emptyList(),
+                        sourceUrl = _uiState.value.webUrl,
+                        allowDiagnosticsUpload = allowDiagnosticsUpload,
+                        raw = raw
+                    )
+                }
+                val hasConsent = requestLlmConsent(
+                    raw,
+                    LlmRepairContext(
+                        scriptName = selectedScript,
+                        failureType = "parser_crash"
+                    )
+                )
+                if (!hasConsent) {
+                    // 给出明确但不泄露敏感信息的提示，并保持“可重试”：
+                    // - 不显示底层异常 message（可能包含页面片段/请求信息）
+                    // - 用户可直接重新导入，或切换为“文件导入”等方式
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            parsePipelineStage = ParsePipelineStage.IDLE,
+                            parseFailureType = "parser_crash",
+                            resultText = "解析失败：解析器运行异常。\n请重试；若仍失败，可尝试文件导入或更换导入方式。"
+                        )
+                    }
+                }
+            } catch (_: Throwable) {
+                // 兜底：避免把异常细节直接展示给用户
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        parsePipelineStage = ParsePipelineStage.IDLE,
+                        parseFailureType = "unsupported_format",
+                        resultText = "解析失败：数据格式不支持或解析过程发生异常。\n请重试；若仍失败，请确认已登录且位于课表页面。"
+                    )
+                }
+            } finally {
+                // 结束本次拉取任务，避免后续无关操作串到同一任务统计中
+                currentScriptPullTaskId = ""
+            }
+        }
+    }
+
+    /**
+     * LLM 异步兜底解析入口
+     *
+     * 仅在解析器运行失败时触发，避免影响主链路。
+     */
+    private suspend fun tryLlmFallback(
+        content: String,
+        schoolId: String,
+        schoolName: String,
+        schoolSystemType: String,
+        sourceUrl: String,
+        repairContext: LlmRepairContext
+    ): LlmFallbackResult {
+        if (content.isBlank()) return LlmFallbackResult(failureReason = "content_blank")
+        val importSessionId = currentParseSessionId.takeIf { it.isNotBlank() }
+            ?: return LlmFallbackResult(failureReason = "import_session_missing")
+        val submitResult = submitLlmParseTaskUseCase(
+            sample = SanitizedDiagnosticSample(
+                importSessionId = importSessionId,
+                sanitizerVersion = DiagnosticHtmlSanitizer.VERSION,
+                contentSha256 = hashSha256(content),
+                content = content
+            ),
+            schoolId = schoolId,
+            schoolName = schoolName,
+            schoolSystemType = schoolSystemType,
+            sourceUrl = extractSourceOrigin(sourceUrl),
+            scriptName = repairContext.scriptName,
+            scriptVersion = repairContext.scriptVersion.takeIf { it > 0 },
+            scriptSource = repairContext.scriptSource,
+            failureType = repairContext.failureType,
+            clientVersion = clientVersion,
+            attemptedParsers = repairContext.attemptedParsers,
+            consentAt = System.currentTimeMillis()
+        )
+        val taskId = submitResult.taskId
+        if (!submitResult.success || taskId.isNullOrBlank()) {
+            return LlmFallbackResult(
+                taskId = taskId.orEmpty(),
+                failureReason = submitResult.message?.ifBlank { "submit_failed" } ?: "submit_failed"
+            )
+        }
+        val maxAttempts = if (submitResult.message == "accepted_pending_model_key") 24 else 12
+        var continuousRequestFailures = 0
+        repeat(maxAttempts) { attempt ->
+            val statusResult = fetchLlmParseStatusUseCase(taskId)
+            if (!statusResult.success) {
+                continuousRequestFailures += 1
+                if (continuousRequestFailures >= 3) {
+                    return LlmFallbackResult(
+                        taskId = taskId,
+                        failureReason = statusResult.message?.ifBlank { "status_fetch_failed" } ?: "status_fetch_failed"
+                    )
+                }
+                if (attempt < maxAttempts - 1) {
+                    kotlinx.coroutines.delay(2000)
+                }
+                return@repeat
+            }
+            continuousRequestFailures = 0
+            when (statusResult.status) {
+                com.dawncourse.core.domain.model.LlmParseStatus.PENDING -> {
+                    if (attempt < maxAttempts - 1) {
+                        kotlinx.coroutines.delay(5000)
+                    }
+                }
+                com.dawncourse.core.domain.model.LlmParseStatus.SUCCESS -> {
+                    val jsonResult = statusResult.resultText.orEmpty()
+                    val parsed = parseLlmFallbackResult(jsonResult)
+                    if (parsed.isNotEmpty()) {
+                        return LlmFallbackResult(courses = parsed, taskId = taskId)
+                    }
+                    return LlmFallbackResult(taskId = taskId, failureReason = "cloud_empty_result")
+                }
+                com.dawncourse.core.domain.model.LlmParseStatus.FAILED -> {
+                    return LlmFallbackResult(
+                        taskId = taskId,
+                        failureReason = statusResult.message?.ifBlank { "cloud_failed" } ?: "cloud_failed"
+                    )
+                }
+                com.dawncourse.core.domain.model.LlmParseStatus.PROCESSING -> {
+                    if (attempt < maxAttempts - 1) {
+                        kotlinx.coroutines.delay(2500)
+                    }
+                }
+            }
+        }
+        return LlmFallbackResult(taskId = taskId, failureReason = "cloud_timeout")
+    }
+
+    private fun parseLlmFallbackResult(raw: String): List<ParsedCourse> {
+        val parsedDirect = parseParsedCoursesFromRaw(raw)
+        if (parsedDirect.isNotEmpty()) return parsedDirect
+        val parsedXiaoai = convertXiaoaiCoursesToParsedCourses(parseXiaoaiProviderResult(raw).courses)
+        if (parsedXiaoai.isNotEmpty()) return parsedXiaoai
+        return emptyList()
+    }
+
+    private fun reportParserParseFeedback(
+        parserName: String,
+        success: Boolean,
+        errorMessage: String?,
+        sourceUrl: String
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                scriptSyncRepository.reportScriptParseFeedback(
+                    scriptName = parserName,
+                    category = "parsers",
+                    success = success,
+                    errorMessage = errorMessage?.take(500),
+                    sourceUrl = sourceUrl,
+                    parseSessionId = currentParseSessionId.takeIf { it.isNotBlank() }
+                )
+            }
+        }
+    }
+
+    private fun reportParseSessionFeedback(
+        scriptName: String,
+        success: Boolean,
+        failureType: String?,
+        schoolSystemType: String,
+        attemptedParsers: List<String>,
+        sourceUrl: String,
+        allowDiagnosticsUpload: Boolean,
+        raw: String = ""
+    ) {
+        val parseSessionId = currentParseSessionId.takeIf { it.isNotBlank() } ?: return
+        if (scriptName.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                scriptSyncRepository.reportScriptParseFeedback(
+                    scriptName = scriptName,
+                    category = "parsers",
+                    success = success,
+                    errorMessage = failureType?.take(120),
+                    sourceUrl = sourceUrl,
+                    parseSessionId = parseSessionId,
+                    isSessionFinal = true,
+                    finalResult = if (success) "success" else "failed",
+                    failureType = failureType,
+                    schoolSystemType = schoolSystemType,
+                    attemptedParsers = attemptedParsers
+                )
+                if (allowDiagnosticsUpload) {
+                    reportParseResultUseCase(
+                        buildParseReportPayload(
+                            importSessionId = parseSessionId,
+                            scriptName = scriptName,
+                            success = success,
+                            failureType = failureType,
+                            schoolSystemType = schoolSystemType,
+                            attemptedParsers = attemptedParsers,
+                            sourceUrl = sourceUrl,
+                            raw = raw,
+                            sanitizedSample = null
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun reportSanitizedParseSample(
+        content: String,
+        schoolId: String,
+        schoolName: String,
+        schoolSystemType: String,
+        sourceUrl: String,
+        repairContext: LlmRepairContext
+    ) {
+        val parseSessionId = currentParseSessionId.takeIf { it.isNotBlank() } ?: return
+        val scriptName = repairContext.scriptName.ifBlank {
+            repairContext.attemptedParsers.firstOrNull().orEmpty()
+        }
+        if (scriptName.isBlank()) return
+        val sample = SanitizedSample(
+            hasUserConsent = true,
+            sanitizerVersion = DiagnosticHtmlSanitizer.VERSION,
+            contentSha256 = hashSha256(content),
+            content = content
+        )
+        val localDiagnosticSample = SanitizedDiagnosticSample(
+            importSessionId = parseSessionId,
+            sanitizerVersion = DiagnosticHtmlSanitizer.VERSION,
+            contentSha256 = hashSha256(content),
+            content = content
+        )
+        diagnosticSampleRepository.saveSanitized(localDiagnosticSample)
+        reportParseResultUseCase(
+            buildParseReportPayload(
+                importSessionId = parseSessionId,
+                scriptName = scriptName,
+                success = false,
+                failureType = repairContext.failureType,
+                schoolSystemType = schoolSystemType,
+                attemptedParsers = repairContext.attemptedParsers,
+                sourceUrl = sourceUrl,
+                raw = content,
+                schoolId = schoolId,
+                schoolName = schoolName,
+                sanitizedSample = sample
+            )
+        )
+    }
+
+    private suspend fun buildParseReportPayload(
+        importSessionId: String,
+        scriptName: String,
+        success: Boolean,
+        failureType: String?,
+        schoolSystemType: String,
+        attemptedParsers: List<String>,
+        sourceUrl: String,
+        raw: String,
+        schoolId: String? = null,
+        schoolName: String? = null,
+        sanitizedSample: SanitizedSample?
+    ): ParseReportPayload {
+        val finalFailureType = if (success) null else mapParseFailureType(failureType)
+        val failureStage = if (success) null else inferFailureStage(failureType, sourceUrl, raw)
+        val repairDomain = failureStage?.let(::repairDomainForStage)
+        val targetType = failureStage?.let(::targetTypeForStage)
+        val parserNames = (if (attemptedParsers.isNotEmpty()) attemptedParsers else listOf(scriptName)).distinct()
+        val attempts = parserNames.map { parserName ->
+            val parserVersion = runCatching {
+                scriptSyncRepository.getScriptVersion(parserName, "parsers")
+            }.getOrNull() ?: 0
+            ParserAttemptReport(
+                parserName = parserName,
+                category = "parsers",
+                parserVersion = parserVersion,
+                releaseId = null,
+                scriptSource = if (parserName == scriptName) "client_selected" else "client_attempted",
+                scriptSha256 = null,
+                durationMs = 0L,
+                success = success && parserName == scriptName,
+                resultCount = if (success && parserName == scriptName) 1 else 0,
+                failureType = if (success && parserName == scriptName) null else finalFailureType,
+                safeErrorCode = failureType,
+                schemaValid = success && parserName == scriptName,
+                confidence = if (success && parserName == scriptName) 1.0f else 0.0f
+            )
+        }
+        return ParseReportPayload(
+            session = ParseSessionContext(
+                importSessionId = importSessionId,
+                appVersionCode = getAppVersionCode(),
+                appVersionName = getAppVersionName(),
+                importSource = ImportSourceType.WEBVIEW,
+                schoolId = schoolId,
+                schoolName = schoolName,
+                schoolSystemType = mapSchoolSystemType(schoolSystemType),
+                sourceUrlHost = extractHost(sourceUrl),
+                startedAt = currentParseStartedAt.takeIf { it > 0L } ?: System.currentTimeMillis()
+            ),
+            pageFingerprint = buildPageFingerprint(raw, sourceUrl),
+            attempts = attempts,
+            finalSuccess = success,
+            finalFailureType = finalFailureType,
+            failureStage = failureStage,
+            repairDomain = repairDomain,
+            targetType = targetType,
+            sourceUrl = extractSourceOrigin(sourceUrl),
+            classificationHint = buildMap {
+                put("scriptName", scriptName)
+                put("schoolSystemType", schoolSystemType)
+                put("failureType", failureType.orEmpty())
+            },
+            consentAt = sanitizedSample?.takeIf { it.hasUserConsent }?.let { System.currentTimeMillis() },
+            sanitizedSample = sanitizedSample
+        )
+    }
+
+    private fun detectSchoolSystemTypeForLlm(content: String, sourceUrl: String): String {
+        val text = "${sourceUrl}\n$content".lowercase()
+        return when {
+            text.contains("jwglxt") || text.contains("zhengfang") || text.contains("正方") -> "zhengfang"
+            text.contains("qiangzhi") || text.contains("强智") -> "qiangzhi"
+            text.contains("kingosoft") || text.contains("青果") -> "kingosoft"
+            text.contains("chaoxing") || text.contains("学习通") || text.contains("超星") -> "chaoxing"
+            else -> ""
+        }
+    }
+
+    private fun selectParserForRepair(
+        currentUrl: String,
+        content: String,
+        attemptedParsers: List<String>,
+        fallback: String
+    ): String {
+        val systemType = detectSchoolSystemTypeForLlm(content, currentUrl)
+        val mapped = when (systemType) {
+            "zhengfang" -> "zhengfang.js"
+            "qiangzhi" -> "qiangzhi.js"
+            "kingosoft" -> "kingosoft.js"
+            else -> ""
+        }
+        return when {
+            mapped.isNotBlank() && (attemptedParsers.isEmpty() || attemptedParsers.contains(mapped)) -> mapped
+            fallback.isNotBlank() -> fallback
+            attemptedParsers.isNotEmpty() -> attemptedParsers.first()
+            else -> ""
+        }
+    }
+
+    private fun normalizeRepairFailureHint(value: String?): String {
+        return when (value?.trim()?.lowercase()) {
+            "parser_crash" -> "parser_crash"
+            "parser_empty" -> "parser_empty"
+            "extractor_empty" -> "extractor_empty"
+            "unsupported_format" -> "unsupported_format"
+            else -> ""
+        }
+    }
+
+    private fun shouldOfferCloudRepair(
+        failureType: String,
+        raw: String,
+        sourceUrl: String,
+        forceOffer: Boolean = false
+    ): Boolean {
+        if (raw.isBlank()) return false
+        if (forceOffer) return true
+        if (failureType == "parser_crash" || failureType == "parser_empty") return true
+        return failureType == "extractor_empty" && isRepairableTimetableContent(raw, sourceUrl)
+    }
+
+    private fun isRepairableTimetableContent(raw: String, sourceUrl: String): Boolean {
+        val text = "$sourceUrl\n$raw".lowercase()
+        val looksLikeTimetable = listOf(
+            "课表", "课程表", "上课", "节次", "星期", "周次", "教师", "教室",
+            "timetable", "schedule", "kbcx", "xskbcx", "kbtable", "kbgrid", "pkSchedule"
+        ).any { text.contains(it.lowercase()) }
+        val looksLikeLoginOnly = listOf(
+            "验证码", "密码", "登录", "login", "captcha", "password"
+        ).any { text.contains(it.lowercase()) } && !looksLikeTimetable
+        return looksLikeTimetable && !looksLikeLoginOnly
+    }
+
+    /**
+     * 请求用户确认云端解析上传
+     *
+     * 若内容为空则返回 false，表示无需弹窗。
+     */
+    private fun requestLlmConsent(raw: String, repairContext: LlmRepairContext): Boolean {
+        val sourceUrl = _uiState.value.webUrl
+        val sanitized = runCatching { sanitizeHtmlForLlm(raw) }.getOrElse {
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    parsePipelineStage = ParsePipelineStage.CLOUD_FAILED,
+                    resultText = "页面内容超过安全处理上限，未保存或上传诊断内容。"
+                )
+            }
+            return false
+        }
+        if (sanitized.isBlank()) return false
+        pendingLlmContent = sanitized
+        pendingLlmRepairContext = repairContext
+        val preview = sanitized.take(1200)
+        val guessedSchoolName = guessSchoolNameForLlm(raw, sanitized)
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                parsePipelineStage = ParsePipelineStage.WAITING_USER_CONSENT,
+                parseFailureType = repairContext.failureType,
+                showLlmConsentDialog = true,
+                llmConsentPreview = preview,
+                llmConsentLength = sanitized.length,
+                llmConsentChecked = false,
+                llmConsentSourceUrl = sourceUrl,
+                llmConsentSchoolName = it.llmConsentSchoolName.ifBlank { guessedSchoolName }
+            )
+        }
+        return true
+    }
+
+    /**
+     * 尝试从抓取到的网页内容中自动推断学校名称，用于在“云端解析同意弹窗”中做预填。
+     *
+     * 设计目标：
+     * 1. 用户未填写学校名时尽量自动补全，提升服务端队列归类与统计的准确性
+     * 2. 不做联网识别，仅从已抓取到的本地 HTML/文本中提取
+     * 3. 失败时返回空字符串，保持 UI 可控
+     */
+    private fun guessSchoolNameForLlm(raw: String, sanitized: String): String {
+        val title = if (raw.contains("<title", ignoreCase = true)) {
+            Regex("(?is)<title[^>]*>(.*?)</title>")
+                .find(raw)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.replace(Regex("\\s+"), "")
+                .orEmpty()
+        } else {
+            ""
+        }
+        val fromTitle = extractSchoolNameFromText(title)
+        if (fromTitle.isNotBlank()) return fromTitle
+        return extractSchoolNameFromText(sanitized.take(2000))
+    }
+
+    /**
+     * 从文本中提取“学校名称”候选。
+     *
+     * 说明：
+     * - 仅匹配常见中文学校后缀（大学/学院/职业技术学院等），避免误把普通词当成学校名
+     * - 不做过度归一化（不裁剪后缀），避免不同学校被合并
+     */
+    private fun extractSchoolNameFromText(text: String): String {
+        if (text.isBlank()) return ""
+        val compact = text.replace(Regex("\\s+"), "")
+        val pattern = Regex(
+            "([\\u4e00-\\u9fa5]{2,40}(?:高等专科学校|职业技术学院|职业学院|技术学院|科技学院|师范大学|师范学院|医学院|中医药大学|外国语大学|外语学院|信息工程学院|信息工程大学|交通大学|工业大学|科技大学|财经大学|农业大学|理工大学|大学|学院))"
+        )
+        return pattern.find(compact)?.groupValues?.getOrNull(1).orEmpty()
+    }
+
+    /**
+     * 更新用户是否勾选了“已知情并同意”
+     */
+    private fun saveScriptSchoolContext(
+        schoolId: String,
+        schoolName: String,
+        schoolSystemType: String
+    ) {
+        val preferences = application.getSharedPreferences(
+            ScriptSchoolContext.PREFERENCES_NAME,
+            android.content.Context.MODE_PRIVATE
+        )
+        preferences.edit()
+            .putString(ScriptSchoolContext.KEY_SCHOOL_ID, schoolId)
+            .putString(ScriptSchoolContext.KEY_SCHOOL_NAME, schoolName)
+            .putString(
+                ScriptSchoolContext.KEY_SCHOOL_SYSTEM_TYPE,
+                ScriptSchoolContext.normalizeSystemType(schoolSystemType)
+            )
+            .apply()
+    }
+
+    fun updateLlmConsentChecked(checked: Boolean) {
+        _uiState.update { it.copy(llmConsentChecked = checked) }
+    }
+
+    fun updateLlmConsentSchoolName(value: String) {
+        _uiState.update { it.copy(llmConsentSchoolName = value) }
+    }
+
+    /**
+     * 用户确认云端解析上传后执行解析
+     */
+    fun confirmLlmConsent() {
+        val content = pendingLlmContent
+        val repairContext = pendingLlmRepairContext
+        if (content.isBlank()) {
+            _uiState.update { it.copy(showLlmConsentDialog = false, llmConsentChecked = false) }
+            return
+        }
+        if (!_uiState.value.llmConsentChecked) {
+            _uiState.update { it.copy(resultText = "请先勾选同意后再上传") }
+            return
+        }
+        val schoolNameInput = _uiState.value.llmConsentSchoolName.trim()
+        val sourceUrl = _uiState.value.llmConsentSourceUrl
+        val schoolSystemType = detectSchoolSystemTypeForLlm(content, sourceUrl)
+        val schoolName = if (schoolNameInput.isNotBlank()) {
+            schoolNameInput
+        } else {
+            extractSchoolNameFromText(content)
+        }
+        val schoolId = ScriptSchoolContext.buildSchoolId(
+            schoolName = schoolName,
+            schoolSystemType = schoolSystemType,
+            sourceUrl = sourceUrl
+        )
+        saveScriptSchoolContext(schoolId, schoolName, schoolSystemType)
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    showLlmConsentDialog = false,
+                    llmConsentChecked = false,
+                    isLoading = true,
+                    parsePipelineStage = ParsePipelineStage.CLOUD_PARSING,
+                    parseFailureType = repairContext.failureType,
+                    resultText = "已获得授权，正在进行云端解析..."
+                )
+            }
+            val fallbackResult = withContext(Dispatchers.IO) {
+                reportSanitizedParseSample(
+                    content = content,
+                    schoolId = schoolId,
+                    schoolName = schoolName,
+                    schoolSystemType = schoolSystemType,
+                    sourceUrl = sourceUrl,
+                    repairContext = repairContext
+                )
+                tryLlmFallback(content, schoolId, schoolName, schoolSystemType, sourceUrl, repairContext)
+            }
+            pendingLlmContent = ""
+            pendingLlmRepairContext = LlmRepairContext()
+            if (fallbackResult.courses.isNotEmpty()) {
+                val lastUrl = _uiState.value.webUrl
+                if (lastUrl.isNotBlank()) {
+                    settingsRepository.setLastImportUrl(lastUrl)
+                }
+                val maxSection = fallbackResult.courses.maxOfOrNull { it.endSection } ?: 12
+                val safeMaxSection = maxSection.coerceAtLeast(4)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        parsedCourses = fallbackResult.courses,
+                        parsePipelineStage = ParsePipelineStage.CLOUD_SUCCESS,
+                        parseFailureType = "",
+                        latestLlmTaskId = fallbackResult.taskId,
+                        step = ImportStep.Review,
+                        detectedMaxSection = safeMaxSection,
+                        sectionTimes = generateDefaultSectionTimes(it, safeMaxSection),
+                        resultText = "已启用云端解析兜底，成功解析 ${fallbackResult.courses.size} 个课程段"
+                    )
+                }
+            } else {
+                val cloudFailurePresentation = buildCloudParseFailurePresentation(
+                    fallbackResult.failureReason.ifBlank { "请确认页面数据完整或稍后重试" }
+                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        parsePipelineStage = ParsePipelineStage.CLOUD_FAILED,
+                        latestLlmTaskId = fallbackResult.taskId,
+                        resultText = cloudFailurePresentation.userMessage
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * 用户取消云端解析上传
+     */
+    fun cancelLlmConsent() {
+        val leavingSessionId = currentParseSessionId.takeIf { it.isNotBlank() }
+        pendingLlmContent = ""
+        pendingLlmRepairContext = LlmRepairContext()
+        if (leavingSessionId != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                diagnosticSampleRepository.clearRawForSession(leavingSessionId)
+            }
+        }
+        _uiState.update {
+            it.copy(
+                showLlmConsentDialog = false,
+                llmConsentChecked = false,
+                parsePipelineStage = ParsePipelineStage.IDLE,
+                resultText = "已取消云端解析上传，可继续尝试其他导入方式。"
+            )
+        }
+    }
+
+    private fun buildClientVersion(): String {
+        return runCatching {
+            val packageInfo = application.packageManager.getPackageInfo(application.packageName, 0)
+            val versionName = packageInfo.versionName?.ifBlank { "unknown" } ?: "unknown"
+            @Suppress("DEPRECATION")
+            val versionCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                packageInfo.versionCode.toLong()
+            }
+            "android/$versionName($versionCode)"
+        }.getOrElse { "android/unknown" }
+    }
+
+    private fun getAppVersionCode(): Long {
+        return runCatching {
+            val packageInfo = application.packageManager.getPackageInfo(application.packageName, 0)
+            @Suppress("DEPRECATION")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                packageInfo.versionCode.toLong()
+            }
+        }.getOrDefault(0L)
+    }
+
+    private fun getAppVersionName(): String {
+        return runCatching {
+            application.packageManager.getPackageInfo(application.packageName, 0)
+                .versionName
+                ?.ifBlank { "unknown" }
+                ?: "unknown"
+        }.getOrDefault("unknown")
+    }
+
+    private fun buildPageFingerprint(raw: String, sourceUrl: String): PageFingerprint {
+        val text = raw
+            .replace(Regex("(?is)<script\\b[^>]*>.*?</script>"), "")
+            .replace(Regex("(?is)<style\\b[^>]*>.*?</style>"), "")
+        val title = Regex("(?is)<title[^>]*>(.*?)</title>")
+            .find(raw)
+            ?.groupValues
+            ?.getOrNull(1)
+            .orEmpty()
+        val lower = "$sourceUrl\n$text".lowercase()
+        val structure = Regex("(?is)<([a-z0-9]+)\\b")
+            .findAll(raw)
+            .mapNotNull { it.groupValues.getOrNull(1)?.lowercase() }
+            .take(300)
+            .joinToString(">")
+        return PageFingerprint(
+            host = extractHost(sourceUrl),
+            pathPattern = extractPathPattern(sourceUrl),
+            titleHash = hashSha256(title).takeIf { title.isNotBlank() },
+            bodyTextHash = hashSha256(text.take(8000)).takeIf { text.isNotBlank() },
+            htmlStructureHash = hashSha256(structure).takeIf { structure.isNotBlank() },
+            tableShape = buildTableShape(raw),
+            formActionHash = Regex("(?is)<form\\b[^>]*action=['\"]?([^'\"\\s>]+)")
+                .find(raw)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.let { hashSha256(it) },
+            hasCaptcha = lower.contains("captcha") || lower.contains("checkcode") || lower.contains("verifycode"),
+            hasLoginKeyword = lower.contains("login") || lower.contains("password") || lower.contains("signin"),
+            hasCourseKeyword = lower.contains("schedule") || lower.contains("timetable") || lower.contains("kbtable")
+        )
+    }
+
+    private fun buildTableShape(raw: String): String? {
+        val tables = Regex("(?is)<table\\b[^>]*>(.*?)</table>").findAll(raw).take(4).toList()
+        if (tables.isEmpty()) return null
+        return tables.joinToString(";") { match ->
+            val table = match.groupValues.getOrNull(1).orEmpty()
+            val rows = Regex("(?is)<tr\\b").findAll(table).count()
+            val cells = Regex("(?is)<t[dh]\\b").findAll(table).count()
+            "rows=$rows,cells=$cells"
+        }
+    }
+
+    private fun extractHost(sourceUrl: String): String? {
+        return runCatching { URI(sourceUrl).host }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * 捕获本次导入默认落点。该函数由页面首次进入调用，之后 Profile 切换不会重定向已开始的导入。
+     */
+    fun beginImport(targetProfileId: Long? = null) {
+        if (_uiState.value.destination != null) return
+        viewModelScope.launch {
+            val active = timetableProfileRepository.observeActiveContext().first()
+                ?: run {
+                    _uiState.update { it.copy(resultText = "无法确定导入目标课表") }
+                    return@launch
+                }
+            val profiles = timetableProfileRepository.observeProfiles().first()
+            val capturedProfile = targetProfileId?.let { requestedId ->
+                profiles.firstOrNull { it.id == requestedId }
+            } ?: active.profile
+            if (targetProfileId != null && capturedProfile.id != targetProfileId) {
+                _uiState.update { it.copy(resultText = "指定课表不存在，无法导入") }
+                return@launch
+            }
+            val targets = profiles.map { profile ->
+                ImportProfileTarget(
+                    profileId = profile.id,
+                    profileName = profile.name,
+                    semesters = timetableProfileRepository.observeSemesters(profile.id).first().map { semester ->
+                        ImportSemesterTarget(semester.id, semester.name)
+                    },
+                )
+            }
+            _uiState.update {
+                it.copy(
+                    capturedProfileId = capturedProfile.id,
+                    destination = ImportDestination.NewSemester(capturedProfile.id),
+                    profileTargets = targets,
+                )
+            }
+        }
+    }
+
+    /** 选择“在指定课表中新建学期”；此处仅变更暂存目标。 */
+    fun selectNewSemesterDestination(profileId: Long) {
+        if (_uiState.value.profileTargets.none { it.profileId == profileId }) return
+        _uiState.update { it.copy(destination = ImportDestination.NewSemester(profileId), pendingOverwriteImpact = null) }
+    }
+
+    /** 选择“新建独立课表”。 */
+    fun selectNewProfileDestination() {
+        _uiState.update { it.copy(destination = ImportDestination.NewProfile, pendingOverwriteImpact = null) }
+    }
+
+    /** 更新新建课表名称；名称校验由领域提交入口兜底。 */
+    fun updateNewProfileName(name: String) {
+        _uiState.update { it.copy(newProfileName = name) }
+    }
+
+    /** 选择明确的覆盖目标；跨 Profile 组合会在 UI 和 data 两层同时拒绝。 */
+    fun selectOverwriteDestination(profileId: Long, semesterId: Long) {
+        val semesterBelongsToProfile = _uiState.value.profileTargets
+            .firstOrNull { it.profileId == profileId }
+            ?.semesters
+            ?.any { it.semesterId == semesterId }
+            ?: false
+        if (!semesterBelongsToProfile) return
+        _uiState.update {
+            it.copy(
+                destination = ImportDestination.OverwriteSemester(profileId, semesterId),
+                pendingOverwriteImpact = null,
+            )
+        }
+    }
+
+    /** 点击导入时仅覆盖目标需要先展示量化影响并获得第二次确认。 */
+    fun requestImportConfirmation() {
+        viewModelScope.launch {
+            val request = buildCommitRequest() ?: return@launch
+            if (request.destination !is ImportDestination.OverwriteSemester) {
+                confirmImport()
+                return@launch
+            }
+            val impact = importCommitRepository.preview(request).getOrElse { error ->
+                _uiState.update { it.copy(resultText = "无法读取覆盖影响：${error.message.orEmpty()}") }
+                return@launch
+            }
+            _uiState.update { it.copy(pendingOverwriteImpact = impact) }
+        }
+    }
+
+    /** 取消覆盖确认，不会改变解析结果或已捕获导入目标。 */
+    fun dismissOverwriteConfirmation() {
+        _uiState.update { it.copy(pendingOverwriteImpact = null) }
+    }
+
+    /** 诊断上传仅保留来源 origin，移除可能含账号或 token 的路径与查询参数。 */
+    private fun extractSourceOrigin(sourceUrl: String): String? {
+        return runCatching {
+            val uri = URI(sourceUrl)
+            val scheme = uri.scheme?.lowercase().orEmpty()
+            val host = uri.host?.lowercase().orEmpty()
+            require((scheme == "http" || scheme == "https") && host.isNotBlank())
+            val isDefaultPort = (scheme == "https" && uri.port == 443) || (scheme == "http" && uri.port == 80)
+            val port = uri.port.takeIf { value -> value > 0 && !isDefaultPort }?.let { value -> ":$value" }.orEmpty()
+            "$scheme://$host$port"
+        }.getOrNull()
+    }
+
+    private fun extractPathPattern(sourceUrl: String): String? {
+        return runCatching {
+            URI(sourceUrl).path
+                ?.replace(Regex("\\d+"), "*")
+                ?.take(160)
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun mapSchoolSystemType(value: String): SchoolSystemType {
+        return when (value.lowercase()) {
+            "zhengfang", "zf" -> SchoolSystemType.ZF
+            "qiangzhi" -> SchoolSystemType.QIANGZHI
+            "kingosoft" -> SchoolSystemType.KINGOSOFT
+            "qidi" -> SchoolSystemType.QIDI
+            "chaoxing" -> SchoolSystemType.CHAOXING
+            else -> SchoolSystemType.UNKNOWN
+        }
+    }
+
+    private fun mapParseFailureType(value: String?): ParseFailureType {
+        return when (value?.lowercase()) {
+            "parser_crash" -> ParseFailureType.SCRIPT_EXECUTION_EXCEPTION
+            "parser_empty" -> ParseFailureType.PARSER_EMPTY_RESULT
+            "extractor_empty" -> ParseFailureType.PAGE_NOT_LOADED
+            "unsupported_format" -> ParseFailureType.UNSUPPORTED_PAGE
+            "cloud_failed" -> ParseFailureType.CLOUD_TASK_FAILED
+            else -> ParseFailureType.UNKNOWN
+        }
+    }
+
+    private fun inferFailureStage(failureType: String?, sourceUrl: String, raw: String): String {
+        val text = "${failureType.orEmpty()}\n$sourceUrl\n${raw.take(4000)}".lowercase()
+        return when {
+            text.contains("captcha") || text.contains("verifycode") || text.contains("login") || text.contains("password") -> "LOGIN_OR_CAPTCHA"
+            text.contains("term") || text.contains("semester") || text.contains("xnxq") || text.contains("学期") || text.contains("学年") || text.contains("extractor_empty") -> "TERM_EXTRACT"
+            text.contains("nav") || text.contains("menu") || text.contains("mmgl") || text.contains("xtgl") || text.contains("jwglxt/xtgl") -> "NAVIGATION"
+            text.contains("cloud") -> "CLOUD_PARSE"
+            text.contains("unsupported_format") -> "NON_TIMETABLE_PAGE"
+            else -> "PARSER"
+        }
+    }
+
+    private fun repairDomainForStage(stage: String): String {
+        return when (stage) {
+            "TERM_EXTRACT" -> "TERM_EXTRACT_FAILURE"
+            "NAVIGATION" -> "NAVIGATION_FAILURE"
+            "LOGIN_OR_CAPTCHA" -> "LOGIN_OR_CAPTCHA"
+            "NON_TIMETABLE_PAGE" -> "NON_TIMETABLE_PAGE"
+            "CLOUD_PARSE" -> "CLOUD_PARSE_FAILURE"
+            else -> "PARSER_FAILURE"
+        }
+    }
+
+    private fun targetTypeForStage(stage: String): String {
+        return when (stage) {
+            "TERM_EXTRACT" -> "term_extractor"
+            "NAVIGATION" -> "navigation"
+            "CLOUD_PARSE" -> "cloud_parse"
+            "LOGIN_OR_CAPTCHA", "NON_TIMETABLE_PAGE" -> "none"
+            else -> "parser"
+        }
+    }
+
+    private fun hashSha256(content: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(content.toByteArray())
+        return digest.joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * 对 HTML/文本进行隐私脱敏
+     *
+     * 规则：
+     * 1. 替换学号、姓名、手机号、身份证、邮箱等字段
+     * 2. 保留解析器诊断所需的页面与表格结构
+     * 3. 不截断内容，确保用户同意后可完整上传
+     */
+    private fun sanitizeHtmlForLlm(raw: String): String {
+        return DiagnosticHtmlSanitizer.sanitize(raw).content
+    }
+
+    /**
+     * 从 WebView 提取 HTML 并使用指定脚本解析 (旧版手动测试入口)
+     */
+    fun parseHtmlFromWebView(html: String, script: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, resultText = "") }
+            try {
+                val scriptHostSource = getScriptHostSource()
+                val parsed = withContext(Dispatchers.IO) {
+                    // 1. 运行 JS 脚本提取数据
+                    val jsonResult = scriptEngine.parseHtml(
+                        script = script,
+                        html = html,
+                        harnessSource = scriptHostSource
+                    ).raw
+
+                    // 2. 解析 JSON 结果
+                    val xiaoaiResult = parseXiaoaiProviderResult(jsonResult)
+                    
+                    // 3. 转换为领域模型
+                    val parsedFromXiaoai = convertXiaoaiCoursesToParsedCourses(xiaoaiResult.courses)
+                    if (parsedFromXiaoai.isNotEmpty()) {
+                        parsedFromXiaoai
+                    } else {
+                        parseParsedCoursesFromRaw(jsonResult)
+                    }
+                }
+                
+                if (parsed.isEmpty()) {
+                    _uiState.update { it.copy(isLoading = false, resultText = "解析完成，但未发现课程。请确认页面是否正确。") }
+                } else {
+                    val lastUrl = _uiState.value.webUrl
+                    if (lastUrl.isNotBlank()) {
+                        settingsRepository.setLastImportUrl(lastUrl)
+                    }
+                    val maxSection = parsed.maxOfOrNull { it.endSection } ?: 12
+                    val maxWeek = parsed.maxOfOrNull { it.endWeek } ?: 20
+                    val safeMaxSection = maxSection.coerceAtLeast(4)
+                    _uiState.update { 
+                        it.copy(
+                            isLoading = false, 
+                            parsedCourses = parsed,
+                            step = ImportStep.Review,
+                            detectedMaxSection = safeMaxSection,
+                            weekCount = maxWeek, // 自动设置学期总周数
+                            sectionTimes = generateDefaultSectionTimes(it, safeMaxSection),
+                            resultText = "成功解析 ${parsed.size} 个课程段"
+                        ) 
+                    }
+                }
+            } catch (_: ScriptEngine.ScriptExecutionException) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        resultText = "解析失败：解析器运行异常。\n请重试；若仍失败，建议更换导入方式。"
+                    )
+                }
+            } catch (_: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        resultText = "解析失败：解析过程发生异常。\n请重试。"
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * 根据当前设置生成默认作息时间表
+     */
+    private fun generateDefaultSectionTimes(state: ImportUiState, maxSection: Int): List<SectionTime> {
+        val generatedTimes = mutableListOf<SectionTime>()
+        val formatter = DateTimeFormatter.ofPattern("HH:mm")
+
+        for (i in 1..maxSection) {
+            val startTime = when (i) {
+                1 -> state.amStartTime
+                state.pmStartSection -> state.pmStartTime
+                state.eveStartSection -> state.eveStartTime
+                else -> {
+                    // 计算当前节次的开始时间：上一节结束时间 + 课间休息
+                    val prevEnd = if (generatedTimes.isNotEmpty()) {
+                        LocalTime.parse(generatedTimes.last().endTime, formatter)
+                    } else {
+                        // 防御性代码，理论上不应发生（除非 maxSection < 1 但循环进来了，或者 i=1 没匹配到）
+                        // 如果 i != 1 但 generatedTimes 为空，说明 pmStartSection/eveStartSection 设置有问题导致跳过了前面的节次？
+                        // 简单起见，如果为空则回退到 amStartTime
+                        state.amStartTime
+                    }
+                    
+                    val prevSectionIndex = i - 1
+                    // 判断是否为大课间 (例如第2节后、第4节后)
+                    val isBigBreak = (prevSectionIndex % state.sectionsPerBigSection == 0)
+                    val gap = if (isBigBreak) state.bigBreakDuration else state.breakDuration
+                    prevEnd.plusMinutes(gap.toLong())
+                }
+            }
+            val endTime = startTime.plusMinutes(state.courseDuration.toLong())
+            generatedTimes.add(
+                SectionTime(
+                    startTime = startTime.format(formatter),
+                    endTime = endTime.format(formatter)
+                )
+            )
+        }
+        return generatedTimes
+    }
+
+    /**
+     * 确认导入
+     *
+     * 将解析后的课程数据、学期设置和时间表设置保存到数据库。
+     * 核心逻辑：
+     * 1. 根据设置更新全局时间配置 (MaxDailySections, SectionTimes)
+     * 2. 通过 ImportCommitRepository 在单个 Room transaction 中写入目标 Profile、学期与课程
+     * 3. 提交成功后再保存全局作息时间设置
+     * 4. 发送广播通知 Widget 更新
+     */
+    fun confirmImport() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            try {
+                val state = _uiState.value
+                val request = buildCommitRequest() ?: run {
+                    _uiState.update { it.copy(isLoading = false) }
+                    return@launch
+                }
+                val commit = importCommitRepository.commit(request)
+                when (commit) {
+                    is ImportCommitResult.Rejected -> {
+                        _uiState.update { it.copy(isLoading = false, resultText = "导入失败：${commit.reason}") }
+                        return@launch
+                    }
+
+                    is ImportCommitResult.Inconsistent -> {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                resultText = "导入状态不一致：${commit.reason}。请从备份或 WebDAV 恢复后再继续。",
+                            )
+                        }
+                        return@launch
+                    }
+
+                    is ImportCommitResult.Success -> Unit
+                }
+
+                // 课表已先原子写入；全局作息设置若失败必须明确告知，不能伪装成整次失败。
+                try {
+                    applyGlobalImportSettings(state)
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                    throw cancellation
+                } catch (settingsFailure: Throwable) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            pendingOverwriteImpact = null,
+                            resultText = "课程已导入，但全局作息设置未完全保存：${settingsFailure.message.orEmpty()}",
+                        )
+                    }
+                    return@launch
+                }
+                
+                val intent = android.content.Intent("com.dawncourse.widget.FORCE_UPDATE")
+                intent.setPackage(application.packageName)
+                application.sendBroadcast(intent)
+                
+                _uiState.update { it.copy(isLoading = false, pendingOverwriteImpact = null, resultText = "导入成功！") }
+                _events.emit(ImportEvent.Success)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, resultText = "导入失败: ${e.message}") }
+            }
+        }
+    }
+
+    /** 构建提交时再次从 state 读取已捕获落点，不查询“当前活动 Profile”。 */
+    private fun buildCommitRequest(): ImportCommitRequest? {
+        val state = _uiState.value
+        val destination = state.destination ?: run {
+            _uiState.update { it.copy(resultText = "导入目标尚未准备完成") }
+            return null
+        }
+        return ImportCommitRequest(
+            destination = destination,
+            semester = NewSemesterSpec(
+                name = "导入学期 ${LocalDate.now()}",
+                startDate = state.semesterStartDate,
+                weekCount = state.weekCount,
+            ),
+            courses = state.parsedCourses.map { it.toDomainCourse() },
+            newProfileName = state.newProfileName,
+        )
+    }
+
+    /** 仅在 Room 提交成功后写入全局节次设置。 */
+    private suspend fun applyGlobalImportSettings(state: ImportUiState) {
+        settingsRepository.setMaxDailySections(state.detectedMaxSection)
+        val finalTimes = state.sectionTimes.ifEmpty {
+            generateDefaultSectionTimes(state, state.detectedMaxSection)
+        }
+        settingsRepository.setSectionTimes(finalTimes)
+        val defaultDuration = state.parsedCourses
+            .groupingBy { it.duration }
+            .eachCount()
+            .maxByOrNull { it.value }
+            ?.key
+            ?.coerceIn(1, 4)
+            ?: 2
+        settingsRepository.setDefaultCourseDuration(defaultDuration)
+    }
+
+    // 保留旧版入口以供手动文本测试
+    fun runImport(script: String) {
+        parseHtmlFromWebView(_uiState.value.htmlContent, script)
+    }
+
+    /**
+     * 运行 ICS 文件导入
+     */
+    fun runIcsImport(icsContent: String) {
+        viewModelScope.launch {
+             _uiState.update { it.copy(isLoading = true, resultText = "") }
+            try {
+                val parsedCourses = withContext(Dispatchers.IO) {
+                    parseIcsToParsedCourses(icsContent)
+                }
+                if (parsedCourses.isEmpty()) {
+                    _uiState.update { it.copy(resultText = "ICS 解析失败: 未识别到课程", isLoading = false) }
+                } else {
+                    val maxSection = parsedCourses.maxOfOrNull { it.endSection } ?: 12
+                    val maxWeek = parsedCourses.maxOfOrNull { it.endWeek } ?: 20
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            parsedCourses = parsedCourses,
+                            step = ImportStep.Review,
+                            detectedMaxSection = maxSection.coerceAtLeast(4),
+                            weekCount = maxWeek, // 自动设置学期总周数
+                            resultText = "ICS 解析成功: ${parsedCourses.size} 门课程"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(resultText = "ICS 解析失败: ${e.message}", isLoading = false) }
+            }
+        }
+    }
+
+    /**
+     * 运行强智 API 导入
+     *
+     * 使用学号与密码获取 token，再根据学年与周次拉取课表。
+     *
+     * @param baseUrl 教务系统基础地址，例如 https://jwxt.xxx.edu.cn
+     * @param studentId 学号
+     * @param password 密码
+     * @param totalWeeks 学期总周数
+     */
+    fun runQiangZhiApiImport(
+        baseUrl: String,
+        studentId: String,
+        password: String,
+        totalWeeks: Int
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, resultText = "正在连接强智教务系统...") }
+            try {
+                var importSource = "API"
+                val parsedCourses = withContext(Dispatchers.IO) {
+                    val normalizedBaseUrl = qiangZhiApiEngine.normalizeBaseUrl(baseUrl)
+                    if (normalizedBaseUrl.isBlank()) {
+                        throw Exception("教务系统地址不正确")
+                    }
+                    if (studentId.isBlank() || password.isBlank()) {
+                        throw Exception("学号或密码不能为空")
+                    }
+
+                    try {
+                        // 1. 尝试标准 API 导入
+                        val token = qiangZhiApiEngine.authUser(normalizedBaseUrl, studentId, password)
+                        val currentInfo = qiangZhiApiEngine.getCurrentTime(normalizedBaseUrl, token)
+                        val xnxqh = currentInfo.optString("xnxqh")
+                        if (xnxqh.isBlank()) {
+                            throw Exception("无法获取学年学期信息")
+                        }
+                        val targetWeeks = totalWeeks.coerceIn(1, 30)
+                        val allCourses = mutableListOf<XiaoaiCourse>()
+                        for (week in 1..targetWeeks) {
+                            val weekArray = qiangZhiApiEngine.getCourseArray(
+                                baseUrl = normalizedBaseUrl,
+                                token = token,
+                                studentId = studentId,
+                                xnxqh = xnxqh,
+                                week = week
+                            )
+                            allCourses.addAll(qiangZhiApiEngine.parseApiCourses(weekArray))
+                        }
+                        val merged = qiangZhiApiEngine.mergeCourses(allCourses)
+                        convertXiaoaiCoursesToParsedCourses(merged)
+                    } catch (apiError: Exception) {
+                        // 2. API 失败时，尝试 Web 模拟登录兜底
+                        val msg = apiError.message ?: ""
+                        val shouldFallback = msg.contains("登录状态已过期") ||
+                            msg.contains("API 接口返回了网页") ||
+                            msg.contains("网页导入") ||
+                            msg.contains("未开放移动端") ||
+                            msg.contains("防火墙") ||
+                            msg.contains("HTTP Error 404") ||
+                            msg.contains("HTTP Error 500")
+                        if (shouldFallback) {
+                             // 仅在明确是 API 不可用或返回 HTML 时尝试 Web 导入
+                             val cookie = qiangZhiApiEngine.loginWeb(normalizedBaseUrl, studentId, password)
+                             val html = qiangZhiApiEngine.fetchHtmlTimetable(normalizedBaseUrl, cookie)
+                             // parseHtmlWithJsoup 直接返回 List<ParsedCourse>，无需转换
+                             importSource = "Web"
+                             return@withContext qiangZhiApiEngine.parseHtmlWithJsoup(html)
+                        }
+                        throw apiError // 如果不是特定错误，或者 Web 导入也未执行，抛出原异常
+                    }
+                }
+                if (parsedCourses.isEmpty()) {
+                    _uiState.update { it.copy(isLoading = false, resultText = "未找到课程数据") }
+                } else {
+                    val maxSection = parsedCourses.maxOfOrNull { it.endSection } ?: 12
+                    val maxWeek = parsedCourses.maxOfOrNull { it.endWeek } ?: 20
+                    val safeMaxSection = maxSection.coerceAtLeast(4)
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            parsedCourses = parsedCourses,
+                            step = ImportStep.Review,
+                            detectedMaxSection = safeMaxSection,
+                            weekCount = maxWeek,
+                            sectionTimes = generateDefaultSectionTimes(it, safeMaxSection),
+                            resultText = "强智 $importSource 导入成功: ${parsedCourses.size} 个课程段"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, resultText = "强智 API 导入失败: ${e.message}") }
+            }
+        }
+    }
+
+    /**
+     * 运行 WakeUp 课程表口令导入
+     *
+     * 通过 WakeUp 官方 API 获取分享的课程数据。
+     * API 地址: https://i.wakeup.fun/share_schedule/get?key={token}
+     *
+     * @param token 用户输入的分享口令
+     */
+    fun runWakeUpImport(token: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, resultText = "正在获取 WakeUp 课表...") }
+            try {
+                val parsed = withContext(Dispatchers.IO) {
+                    // 1. 发送 GET 请求
+                    // 必须伪装 User-Agent 和 version 才能通过 API 校验
+                    val urlStr = "https://i.wakeup.fun/share_schedule/get?key=$token"
+                    val url = java.net.URL(urlStr)
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.setRequestProperty("User-Agent", "okhttp/3.14.9")
+                    conn.setRequestProperty("version", "243")
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 10000
+                    
+                    if (conn.responseCode != 200) {
+                        throw Exception("HTTP Error ${conn.responseCode}")
+                    }
+                    
+                    val responseText = conn.inputStream.bufferedReader().use { it.readText() }
+                    
+                    // 2. 解析响应结构
+                    // 响应是一个 JSON: {"code": 200, "data": "...\n...\n...", "msg": ""}
+                    // 其中 data 字段是一个包含换行符的字符串，通过换行符分隔不同部分的数据
+                    val rootJson = org.json.JSONObject(responseText)
+                    if (rootJson.optInt("code") != 200) {
+                         throw Exception("API Error: ${rootJson.optString("msg")}")
+                    }
+                    
+                    val dataStr = rootJson.optString("data")
+                    val parts = dataStr.split("\n")
+                    // 校验数据完整性，通常至少包含 5 部分
+                    if (parts.size < 5) {
+                        throw Exception("数据格式不符合预期 (parts < 5)")
+                    }
+                    
+                    // 3. 解析课程元数据 (parts[3])
+                    // 格式为 JSON 数组，包含课程 ID 和课程名称的映射
+                    val rawCourseMaps = org.json.JSONArray(parts[3])
+                    val courseNameMap = mutableMapOf<Int, String>()
+                    for (i in 0 until rawCourseMaps.length()) {
+                        val item = rawCourseMaps.getJSONObject(i)
+                        val id = item.optInt("id")
+                        val name = item.optString("courseName")
+                        courseNameMap[id] = name
+                    }
+                    
+                    // 4. 解析具体课程时间表 (parts[4])
+                    // 格式为 JSON 数组，包含具体的上课时间、地点、老师等信息
+                    val rawCourses = org.json.JSONArray(parts[4])
+                    val xiaoaiCourses = mutableListOf<com.dawncourse.feature.import_module.model.XiaoaiCourse>()
+                    
+                    for (i in 0 until rawCourses.length()) {
+                        val item = rawCourses.getJSONObject(i)
+                        val id = item.optInt("id")
+                        // 通过 ID 关联获取课程名称
+                        val name = courseNameMap[id] ?: "-"
+                        val room = item.optString("room", "-")
+                        val teacher = item.optString("teacher", "-")
+                        val startWeek = item.optInt("startWeek")
+                        val endWeek = item.optInt("endWeek")
+                        val day = item.optInt("day")
+                        val startNode = item.optInt("startNode")
+                        val step = item.optInt("step")
+                        
+                        // 构建连续的周次列表
+                        val weeks = (startWeek..endWeek).toList()
+                        // 构建节次列表 (例如: 1, 2)
+                        val sections = (startNode until (startNode + step)).toList()
+                        
+                        xiaoaiCourses.add(
+                            com.dawncourse.feature.import_module.model.XiaoaiCourse(
+                                name = name,
+                                teacher = teacher,
+                                position = room,
+                                day = day,
+                                weeks = weeks,
+                                sections = sections
+                            )
+                        )
+                    }
+                    
+                    // 转换为应用内部通用的 ParsedCourse 格式
+                    convertXiaoaiCoursesToParsedCourses(xiaoaiCourses)
+                }
+                
+                if (parsed.isEmpty()) {
+                    _uiState.update { it.copy(isLoading = false, resultText = "未找到课程数据") }
+                } else {
+                     val maxSection = parsed.maxOfOrNull { it.endSection } ?: 12
+                     val maxWeek = parsed.maxOfOrNull { it.endWeek } ?: 20
+                     val safeMaxSection = maxSection.coerceAtLeast(4)
+                     _uiState.update { 
+                        it.copy(
+                            isLoading = false, 
+                            parsedCourses = parsed,
+                            step = ImportStep.Review,
+                            detectedMaxSection = safeMaxSection,
+                            weekCount = maxWeek,
+                            sectionTimes = generateDefaultSectionTimes(it, safeMaxSection),
+                            resultText = "WakeUp 导入成功: ${parsed.size} 个课程段"
+                        ) 
+                    }
+                }
+                
+            } catch (e: Exception) {
+                 _uiState.update { it.copy(isLoading = false, resultText = "WakeUp 导入失败: ${e.message}") }
+            }
+        }
+    }
+
+
+
+
+
+
+
+}

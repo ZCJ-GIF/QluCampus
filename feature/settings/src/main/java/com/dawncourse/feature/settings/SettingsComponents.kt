@@ -1,0 +1,304 @@
+package com.dawncourse.feature.settings
+
+import com.dawncourse.core.ui.components.glassSurface
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForwardIos
+import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+
+/**
+ * 设置分组容器
+ *
+ * @param title 分组标题
+ * @param content 分组内容
+ */
+@Composable
+fun PreferenceCategory(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
+        )
+        Card(
+            modifier = Modifier.fillMaxWidth().glassSurface(RoundedCornerShape(16.dp)),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                content()
+            }
+        }
+    }
+}
+
+/**
+ * 通用设置行
+ *
+ * @param title 主标题
+ * @param description 描述文本
+ * @param icon 左侧图标
+ * @param action 右侧动作区域
+ * @param onClick 点击回调
+ * @param showArrow 是否显示右侧箭头
+ * @param showDivider 是否显示分割线
+ * @param content 行内扩展内容
+ */
+@Composable
+fun SettingRow(
+    title: String,
+    description: String? = null,
+    icon: @Composable (() -> Unit)? = null,
+    action: @Composable (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+    showArrow: Boolean = false,
+    showDivider: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit = {}
+) {
+    Surface(
+        onClick = { onClick?.invoke() },
+        enabled = onClick != null,
+        color = Color.Transparent
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (icon != null) {
+                    Box(modifier = Modifier.size(24.dp)) {
+                        icon()
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    if (description != null) {
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (action != null) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    action()
+                }
+                if (showArrow) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowForwardIos,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+            }
+            content()
+            if (showDivider) {
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            }
+        }
+    }
+}
+
+/**
+ * 带开关的设置行
+ */
+@Composable
+fun SwitchSetting(
+    title: String,
+    description: String? = null,
+    icon: @Composable (() -> Unit)? = null,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    showDivider: Boolean = false
+) {
+    SettingRow(
+        title = title,
+        description = description,
+        icon = icon,
+        action = {
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        },
+        onClick = { onCheckedChange(!checked) },
+        showDivider = showDivider
+    )
+}
+
+/**
+ * 基础滑杆设置项（实时更新）
+ */
+@Composable
+fun SliderSetting(
+    title: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int = 0,
+    valueText: String,
+    description: String? = null,
+    showDivider: Boolean = false
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = valueText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        if (description != null) {
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            steps = steps
+        )
+        if (showDivider) {
+            HorizontalDivider()
+        }
+    }
+}
+
+/**
+ * 平滑滑杆设置项（滑动结束后回调）
+ */
+@Composable
+fun SmoothSliderSetting(
+    title: String,
+    value: Float,
+    onValueChangeFinished: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    valueText: (Float) -> String,
+    description: String? = null,
+    showDivider: Boolean = false
+) {
+    var sliderValue by remember(value) { mutableFloatStateOf(value) }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = valueText(sliderValue),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        if (description != null) {
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Slider(
+            value = sliderValue,
+            onValueChange = { sliderValue = it },
+            onValueChangeFinished = { onValueChangeFinished(sliderValue) },
+            valueRange = valueRange
+        )
+        if (showDivider) {
+            HorizontalDivider()
+        }
+    }
+}
+
+/**
+ * 检查更新入口项
+ */
+@Composable
+fun UpdateSettingItem(
+    currentVersion: String,
+    onCheckUpdate: () -> Unit
+) {
+    Surface(
+        onClick = onCheckUpdate,
+        color = Color.Transparent
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 左侧图标
+            Icon(
+                imageVector = Icons.Outlined.SystemUpdate,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface
+            )
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "检查更新",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Text(
+                    text = "当前版本 v$currentVersion",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+            
+            // 右侧箭头
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowForwardIos,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.outline
+            )
+        }
+    }
+}

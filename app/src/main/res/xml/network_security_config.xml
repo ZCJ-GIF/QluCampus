@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- QluCampus modification, 2026-09-21: school timetable and grades fork; GPL-3.0, upstream attribution retained. -->
+<network-security-config>
+    <!-- QluCampus modification, 2026-09-21: school sessions require HTTPS. -->
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

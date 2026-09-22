@@ -1,0 +1,86 @@
+package com.dawncourse.core.ui.util
+
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import com.dawncourse.core.domain.model.Course
+import kotlin.math.abs
+import androidx.compose.runtime.staticCompositionLocalOf
+
+val LocalCoursePalette = staticCompositionLocalOf<Map<String, String>> { emptyMap() }
+
+/**
+ * 课程颜色工具类
+ *
+ * 实现基于 HSL 模型的颜色分配算法，确保相邻课程颜色差异明显。
+ */
+object CourseColorUtils {
+
+    // 12 套预设配色方案 (Macaron / Morandi Style)
+    // 低饱和度、高明度，视觉舒适
+    private val PRESET_COLORS = listOf(
+        "#E8DEF8", // 浅紫
+        "#F2E7FE",
+        "#C4E7FF", // 浅蓝
+        "#C3EED0", // 浅绿
+        "#FDE2E4", // 浅粉
+        "#FFF4DE", // 浅黄
+        "#D7E8CD", // 莫兰迪绿
+        "#EAD5D5", // 莫兰迪粉
+        "#D8E2DC", // 莫兰迪青
+        "#FFE5D9", // 莫兰迪橙
+        "#ECE4DB"  // 莫兰迪灰
+    )
+
+    /**
+     * 获取课程预设色列表（用于颜色选择器与课表展示统一）
+     */
+    fun getPresetColors(): List<String> = PRESET_COLORS
+
+    /**
+     * 为课程获取显示颜色
+     *
+     * 如果课程已有自定义颜色，则使用之。
+     * 否则根据课程 ID 或名称生成唯一颜色。
+     */
+    private val HIGH_CONTRAST = listOf("#005A9C", "#FFD166", "#7B1FA2", "#00796B", "#C62828", "#EF6C00", "#283593", "#C5E1A5", "#F48FB1", "#455A64", "#A1887F", "#00BCD4")
+    fun key(course: Course): String = course.name + "\u0000" + course.teacher
+    fun highContrastPalette(courses: List<Course>): Map<String, String> = courses.map(::key).distinct().sorted()
+        .mapIndexed { index, key -> key to HIGH_CONTRAST[index % HIGH_CONTRAST.size] }.toMap()
+    fun getCourseColor(course: Course, highContrast: Boolean = false, palette: Map<String, String> = emptyMap()): String {
+        if (highContrast) return palette[key(course)] ?: HIGH_CONTRAST[Math.floorMod((course.name + course.teacher).hashCode(), HIGH_CONTRAST.size)]
+        if (course.color.isNotEmpty()) {
+            return course.color
+        }
+        return generateColor(course.name, course.teacher)
+    }
+
+    /** 灰色只用于所查看周次不排课的卡片，不改写课程保存的原色。 */
+    fun getTimetableColor(course: Course, isCurrentWeek: Boolean, highContrast: Boolean, palette: Map<String, String>): Color =
+        if (isCurrentWeek) parseColor(getCourseColor(course, highContrast, palette)) else Color(0xFFD7D7D7)
+
+    /**
+     * 根据名称和教师生成颜色 (用于导入预览等没有完整 Course 对象的场景)
+     */
+    fun generateColor(name: String, teacher: String?): String {
+        val hash = (name + (teacher ?: "")).hashCode()
+        val index = Math.floorMod(hash, PRESET_COLORS.size)
+        return PRESET_COLORS[index]
+    }
+    
+    fun parseColor(colorHex: String): Color {
+        return try {
+            Color(android.graphics.Color.parseColor(colorHex))
+        } catch (e: Exception) {
+            Color(android.graphics.Color.parseColor(PRESET_COLORS[0]))
+        }
+    }
+
+    /**
+     * 根据背景色计算最佳文本颜色（黑或白）
+     */
+    fun getBestContentColor(backgroundColor: Color): Color {
+        val argb = backgroundColor.toArgb()
+        return if (androidx.core.graphics.ColorUtils.calculateContrast(android.graphics.Color.BLACK, argb) >=
+            androidx.core.graphics.ColorUtils.calculateContrast(android.graphics.Color.WHITE, argb)) Color.Black else Color.White
+    }
+}

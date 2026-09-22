@@ -1,0 +1,86 @@
+# CodeQL 安全扫描工作流（v4 版）
+# 说明：升级到 v4，保留 Android 项目必需的手动构建（build-mode: manual）
+
+name: "CodeQL"
+
+on:
+  push:
+    branches: ["main"]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - 'deps.txt'
+      - 'scripts/**'
+  pull_request:
+    branches: ["main"]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - 'deps.txt'
+      - 'scripts/**'
+  schedule:
+    - cron: "0 2 * * 1"   # 每周一 02:00 例行扫描
+
+# 新推送取消尚未结束的旧扫描。
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    if: github.event_name == 'pull_request' || !contains(github.event.head_commit.message, 'Merge pull request')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["java-kotlin", "javascript-typescript"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      # 仅用于依赖/wrapper 缓存（构建缓存对 CodeQL 反而有害，见下方 --no-build-cache）。
+      - name: Set up Gradle
+        if: matrix.language == 'java-kotlin'
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.language == 'java-kotlin' && 'manual' || 'none' }}
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Build (Android)
+        if: matrix.language == 'java-kotlin'
+        # 必须禁用 Gradle 构建缓存：CodeQL 的 manual 抽取靠 trace 包裹真实的 kotlinc/
+        # javac 调用，一旦编译任务命中构建缓存（FROM-CACHE）就不会真正执行，数据库为空、
+        # 分析报 "no source code seen"。依赖缓存（setup-gradle）不受影响。
+        run: >-
+          ./gradlew :app:assembleDebug
+          --no-build-cache --max-workers=4
+          -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8" -Dkotlin.daemon.jvmargs="-Xmx2g"
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: ${{ matrix.language }}
+          upload: true

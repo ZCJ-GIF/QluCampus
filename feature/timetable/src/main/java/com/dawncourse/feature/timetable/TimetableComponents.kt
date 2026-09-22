@@ -1,0 +1,837 @@
+package com.dawncourse.feature.timetable
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import com.dawncourse.core.ui.components.glassSurface
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.rounded.BeachAccess
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.graphics.ColorUtils
+import com.dawncourse.core.domain.model.Course
+import com.dawncourse.core.domain.model.DividerType
+import com.dawncourse.core.ui.components.AnimatedDropdownMenu
+import com.dawncourse.core.ui.theme.LocalWallpaperContrastColor
+import com.dawncourse.core.ui.theme.LocalAppSettings
+import com.dawncourse.core.ui.util.CourseColorUtils
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.temporal.TemporalAdjusters
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+
+// 常量定义
+const val TIMETABLE_START_HOUR = 8 // 起始时间 8:00
+
+/**
+ * 课表顶部操作栏
+ *
+ * 显示当前周次、周次切换下拉菜单以及常用功能入口（导入、添加、设置）。
+ *
+ * @param displayedWeek 当前展示的周次（用户正在查看的周次）
+ * @param realCurrentWeek 当前日期所属的真实周次（用于“当前”标记与本周提示）
+ * @param isHolidayMode 是否处于假期模式（开学前或学期结束）
+ * @param totalWeeks 学期总周数
+ * @param onWeekSelected 周次选择回调
+ * @param onSettingsClick 设置按钮点击回调
+ * @param onAddClick 添加按钮点击回调
+ * @param onImportClick 导入按钮点击回调
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimetableTopBar(
+    displayedWeek: Int,
+    realCurrentWeek: Int,
+    isHolidayMode: Boolean,
+    totalWeeks: Int,
+    onWeekSelected: (Int) -> Unit,
+    onSettingsClick: () -> Unit,
+    onAddClick: () -> Unit,
+    onImportClick: () -> Unit,
+    onSyncClick: () -> Unit,
+    profileName: String = "",
+    onChooseProfile: () -> Unit = {},
+    onRefreshProfile: () -> Unit = {},
+    onManageProfiles: () -> Unit = {},
+    canRefreshProfile: Boolean = false
+) {
+    var showWeekMenu by remember { mutableStateOf(false) }
+    val weekMenuScrollState = rememberScrollState()
+    val topBarIconColor = MaterialTheme.colorScheme.onSurface
+    val compact = LocalAppSettings.current.campusAppearance.fitTimetableToScreen
+
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+    val actionSize = if (maxWidth < 380.dp) 32.dp else 36.dp
+    val dateSize = if (maxWidth < 350.dp) 18.sp else 24.sp
+    TopAppBar(
+        modifier = Modifier.glassSurface(),
+        windowInsets = TopAppBarDefaults.windowInsets,
+        expandedHeight = if (compact) 72.dp else 64.dp,
+        title = {
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .semantics { testTagsAsResourceId = true }
+                        .testTag(TimetableBenchmarkContract.WEEK_SWITCH_TEST_TAG)
+                        .semantics { contentDescription = "切换周次" }
+                        .clickable { showWeekMenu = true }
+                ) {
+                    Text(
+                        text = if (compact) LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy/M/d")) else if (isHolidayMode) "假期中" else "第 $displayedWeek 周",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = if (compact) FontWeight.Normal else FontWeight.Bold, fontSize = if (compact) dateSize else 22.sp
+                        ),
+                        color = topBarIconColor, maxLines = 1, softWrap = false
+                    )
+
+                }
+                if (compact) {
+                    Text(if (isHolidayMode) "假期中 · 查看第 $displayedWeek 周" else "第 $displayedWeek 周${if (displayedWeek == realCurrentWeek) " · 本周" else "  当前为第 $realCurrentWeek 周"}", style = MaterialTheme.typography.labelMedium.copy(fontSize = 14.sp), maxLines = 1, softWrap = false)
+                } else if (isHolidayMode) {
+                    Text(
+                        text = if (displayedWeek <= 0) "当前展示：假期中" else "当前展示：第 $displayedWeek 周",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                } else if (displayedWeek == realCurrentWeek) {
+                    Text(
+                        text = "本周",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
+                
+                AnimatedDropdownMenu(
+                    expanded = showWeekMenu,
+                    onDismissRequest = { showWeekMenu = false },
+                    modifier = Modifier
+                        .heightIn(max = 420.dp)
+                        .width(220.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = "选择周次",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        onClick = { },
+                        enabled = false
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 360.dp)
+                            .verticalScroll(weekMenuScrollState)
+                            .padding(horizontal = 6.dp, vertical = 6.dp)
+                    ) {
+                        val isHolidaySelected = displayedWeek <= 0
+                        val isHolidayCurrent = realCurrentWeek <= 0
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.BeachAccess,
+                                        contentDescription = "假期中",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .padding(end = 8.dp)
+                                    )
+                                    Text(
+                                        text = "假期中",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = if (isHolidaySelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    if (isHolidayCurrent) {
+                                        Text(
+                                            text = "当前",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            },
+                            leadingIcon = if (isHolidaySelected) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                            onClick = {
+                                onWeekSelected(0)
+                                showWeekMenu = false
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (isHolidaySelected) {
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+                                    }
+                                )
+                        )
+                        for (i in 1..totalWeeks) {
+                            val isDisplayedWeek = i == displayedWeek
+                            val isRealCurrent = i == realCurrentWeek
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = "第 $i 周",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = if (isDisplayedWeek) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                        Spacer(modifier = Modifier.weight(1f))
+                                        if (isRealCurrent) {
+                                            Text(
+                                                text = "当前",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                },
+                                leadingIcon = if (isDisplayedWeek) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                } else {
+                                    null
+                                },
+                                onClick = {
+                                    onWeekSelected(i)
+                                    showWeekMenu = false
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (isDisplayedWeek) {
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                                        } else {
+                                            MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+                                        }
+                                    )
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        actions = {
+            // 六个操作直接在日期同一行，不放入日期的周次菜单。
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides actionSize) {
+                IconButton(onClick = onChooseProfile, modifier = Modifier.size(actionSize)) {
+                    Icon(Icons.Default.Layers, contentDescription = "切换课表：$profileName", modifier = Modifier.size(22.dp))
+                }
+                IconButton(onClick = onRefreshProfile, enabled = canRefreshProfile, modifier = Modifier.size(actionSize)) {
+                    Icon(Icons.Default.Refresh, contentDescription = "刷新课表", modifier = Modifier.size(22.dp))
+                }
+                IconButton(onClick = onManageProfiles, modifier = Modifier.size(actionSize)) {
+                    Icon(Icons.Default.FolderOpen, contentDescription = "管理课表", modifier = Modifier.size(22.dp))
+                }
+                IconButton(onClick = onAddClick, modifier = Modifier.size(actionSize)) {
+                    Icon(Icons.Default.Add, contentDescription = "添加课程", modifier = Modifier.size(22.dp))
+                }
+                IconButton(onClick = onImportClick, modifier = Modifier.size(actionSize)) {
+                    Icon(Icons.Default.FileDownload, contentDescription = "导入课程", modifier = Modifier.size(22.dp))
+                }
+                IconButton(onClick = onSettingsClick, modifier = Modifier.size(actionSize)) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "设置", modifier = Modifier.size(22.dp))
+                }
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent,
+            titleContentColor = topBarIconColor,
+            actionIconContentColor = topBarIconColor
+        )
+    )
+    }
+}
+
+/**
+ * 周次头部栏组件
+ *
+ * 显示周一到周日，并高亮当前日期。
+ * 如果设置中开启了日期显示，会根据学期开始日期计算并显示具体的月.日。
+ *
+ * @param modifier 修饰符
+ * @param isCurrentWeek 是否为本周 (只有本周才高亮今天)
+ * @param displayedWeek 当前显示的周次 (1-based)
+ * @param semesterStartDate 学期开始日期
+ */
+@Composable
+fun WeekHeader(
+    modifier: Modifier = Modifier,
+    isCurrentWeek: Boolean,
+    displayedWeek: Int = 1,
+    semesterStartDate: LocalDate? = null,
+    textColor: Color = MaterialTheme.colorScheme.onSurface
+) {
+    val settings = LocalAppSettings.current
+    if (settings.campusAppearance.fitTimetableToScreen) {
+        val monday = semesterStartDate?.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+            ?.plusWeeks((displayedWeek - 1).toLong())
+        val today = LocalDate.now()
+        Row(modifier.fillMaxWidth().height(LocalWeekHeaderHeight.current).glassSurface(), verticalAlignment = Alignment.CenterVertically) {
+            Text(monday?.let { "${it.monthValue}\n月" }.orEmpty(), Modifier.width(LocalTimeColumnWidth.current),
+                textAlign = TextAlign.Center, fontSize = 12.sp, lineHeight = 15.sp, color = textColor)
+            repeat(if (settings.showWeekend) 7 else 5) { index ->
+                val date = monday?.plusDays(index.toLong())
+                val selected = date == today && isCurrentWeek
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(listOf("一", "二", "三", "四", "五", "六", "日")[index], fontSize = 13.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        color = textColor.copy(alpha = if (selected) 1f else .7f))
+                    Text(date?.let { "${it.monthValue}/${it.dayOfMonth}" }.orEmpty(), fontSize = 11.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        color = textColor.copy(alpha = if (selected) 1f else .7f))
+                }
+            }
+        }
+        return
+    }
+    // 性能优化：将静态列表放入 remember 中，避免每次重组重复创建
+    val days = remember(settings.showWeekend) {
+        if (settings.showWeekend) {
+            listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+        } else {
+            listOf("周一", "周二", "周三", "周四", "周五")
+        }
+    }
+    val today = LocalDate.now().dayOfWeek.value // 1 (Mon) - 7 (Sun)
+    
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .glassSurface()
+            .padding(start = LocalTimeColumnWidth.current)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        days.forEachIndexed { index, day ->
+            val dayValue = index + 1
+            val isToday = isCurrentWeek && (dayValue == today)
+            val dotSize by animateDpAsState(
+                targetValue = if (isToday) 4.dp else 0.dp,
+                animationSpec = spring(stiffness = Spring.StiffnessLow),
+                label = "todayDot"
+            )
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = day,
+                    color = if (isToday) textColor else textColor.copy(alpha = 0.7f),
+                    fontSize = if (isToday) 15.sp else 12.sp,
+                    fontWeight = if (isToday) FontWeight.ExtraBold else FontWeight.Medium
+                )
+
+                Spacer(modifier = Modifier.height(0.dp))
+
+                if (settings.showDateInHeader && semesterStartDate != null) {
+                    val baseMonday = semesterStartDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                    val date = baseMonday.plusWeeks((displayedWeek - 1).toLong())
+                        .plusDays(index.toLong())
+                    val dateText = "%02d.%02d".format(date.monthValue, date.dayOfMonth)
+
+                    Text(
+                        text = dateText,
+                        color = if (isToday) textColor else textColor.copy(alpha = 0.5f),
+                        fontSize = if (isToday) 11.sp else 10.sp,
+                        fontWeight = if (isToday) FontWeight.Bold else FontWeight.Light
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                } else {
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(dotSize)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 左侧时间轴指示器
+ *
+ * 显示节次数字 (1-12) 和对应的时间。
+ *
+ * @param modifier 修饰符
+ */
+@Composable
+fun TimeColumnIndicator(
+    modifier: Modifier = Modifier,
+    textColor: Color = MaterialTheme.colorScheme.onSurface
+) {
+    val settings = LocalAppSettings.current
+    val maxNodes = LocalTimetableSectionCount.current
+    val nodeHeight = LocalCourseRowHeight.current
+
+    Column(
+        modifier = modifier
+            .width(LocalTimeColumnWidth.current),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        for (i in 1..maxNodes) {
+            Column(
+                modifier = Modifier.height(nodeHeight),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                if (settings.showSidebarIndex) Text(
+                    text = i.toString(),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.SansSerif
+                    ),
+                    color = textColor
+                )
+                // Show configured time or default
+                val sectionTime = settings.sectionTimes.getOrNull(i - 1)
+                val startTime = sectionTime?.startTime?.takeIf(String::isNotBlank) ?: "未设置"
+                val endTime = sectionTime?.endTime
+                
+                if (settings.showSidebarTime) Text(
+                    text = startTime,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 8.sp,
+                        fontFamily = FontFamily.Monospace
+                    ),
+                    color = textColor.copy(alpha = 0.8f)
+                )
+                
+                if (settings.showSidebarTime && !endTime.isNullOrBlank()) {
+                    Text(
+                        text = endTime,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 8.sp,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = textColor.copy(alpha = 0.8f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+/**
+ * 课表网格布局
+ *
+ * 使用自定义 Layout 实现，根据课程的星期和节次进行绝对定位。
+ *
+ * @param courses 课程列表
+ * @param currentWeek 当前周次
+ * @param modifier 修饰符
+ * @param onCourseClick 课程点击回调
+ */
+@Composable
+fun TimetableGrid(
+    courses: List<Course>,
+    currentWeek: Int,
+    modifier: Modifier = Modifier,
+    onCourseClick: (Course) -> Unit
+) {
+    val settings = LocalAppSettings.current
+    val maxNodes = LocalTimetableSectionCount.current
+    val nodeHeight = LocalCourseRowHeight.current
+    val totalHeight = nodeHeight * maxNodes
+    
+    val dividerColor = remember(settings.dividerColor, settings.dividerAlpha) {
+        runCatching { Color(android.graphics.Color.parseColor(settings.dividerColor)) }
+            .getOrElse { Color(0xFFE5E7EB) }
+            .copy(alpha = settings.dividerAlpha)
+    }
+
+    val pathEffect = remember(settings.dividerType) {
+        when (settings.dividerType) {
+            DividerType.SOLID -> null
+            DividerType.DASHED -> PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+            DividerType.DOTTED -> PathEffect.dashPathEffect(floatArrayOf(2f, 4f), 0f)
+        }
+    }
+
+    // 1. 准备显示列表并生成布局项
+    val layoutItems = remember(courses, currentWeek, settings.hideNonThisWeek, settings.showWeekend, maxNodes) {
+        TimetableLayoutEngine.calculateLayoutItems(
+            courses = courses,
+            currentWeek = currentWeek,
+            maxNodes = maxNodes,
+            hideNonThisWeek = settings.hideNonThisWeek,
+            showWeekend = settings.showWeekend
+        )
+    }
+
+    Box(
+        modifier = modifier
+            .height(totalHeight)
+            .drawBehind {
+                if (settings.campusAppearance.fitTimetableToScreen) return@drawBehind
+                val width = size.width
+                val nodeHeightPx = nodeHeight.toPx()
+
+                // Draw horizontal lines
+                for (i in 0..maxNodes) {
+                    drawLine(
+                        color = dividerColor, // Use color from settings (includes alpha)
+                        start = Offset(0f, i * nodeHeightPx),
+                        end = Offset(width, i * nodeHeightPx),
+                        strokeWidth = settings.dividerWidthDp.dp.toPx(), // Use width from settings (dp)
+                        pathEffect = pathEffect
+                    )
+                }
+            }
+    ) {
+        if (layoutItems.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(bottom = 60.dp), // 视觉中心修正
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "☕",
+                    style = MaterialTheme.typography.displayMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Text(
+                    text = "好好享受假期吧",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        } else {
+            Layout(
+                content = {
+                    layoutItems.forEach { item ->
+                        val course = item.course
+                        val isWallpaperSet = settings.wallpaperUri.isNullOrBlank().not()
+                        androidx.compose.runtime.key(course.id) {
+                            CourseCard(
+                                course = course,
+                                isCurrentWeek = item.isCurrentWeek,
+                                isWallpaperSet = isWallpaperSet,
+                                onClick = { onCourseClick(course) }
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            ) { measurables, constraints ->
+                // 1. 计算基础尺寸
+                val width = constraints.maxWidth
+                val daysCount = if (settings.showWeekend) 7 else 5
+                val cellWidth = width / daysCount.toFloat()
+                val nodeHeightPx = nodeHeight.toPx()
+                
+                // 2. 测量所有子元素
+                val placeables = measurables.mapIndexed { index, measurable ->
+                    val item = layoutItems[index]
+                    val span = (item.safeEndSection - item.safeStartSection + 1).coerceAtLeast(1)
+                    val height = (span * nodeHeightPx).roundToInt()
+
+                    // 同一天列内，使用边界切片法分配列宽，避免舍入误差导致的缝隙或重叠
+                    val safeLaneCount = item.laneCount.coerceAtLeast(1).coerceAtMost(12)
+                    val safeLaneIndex = item.laneIndex.coerceIn(0, safeLaneCount - 1)
+                    val laneWidthF = cellWidth / safeLaneCount
+                    val leftF = safeLaneIndex * laneWidthF
+                    val rightF = (safeLaneIndex + 1) * laneWidthF
+                    val placeableWidth = (rightF.roundToInt() - leftF.roundToInt()).coerceAtLeast(1)
+                    
+                    measurable.measure(
+                        constraints.copy(
+                            minWidth = placeableWidth,
+                            maxWidth = placeableWidth,
+                            minHeight = height,
+                            maxHeight = height
+                        )
+                    )
+                }
+                
+                layout(width, (maxNodes * nodeHeightPx).roundToInt()) {
+                    placeables.forEachIndexed { index, placeable ->
+                        val item = layoutItems[index]
+                        
+                        // 计算位置
+                        // X: (dayOfWeek - 1) * cellWidth + laneOffset
+                        val dayX = ((item.safeDayOfWeek - 1) * cellWidth).roundToInt()
+                        val safeLaneCount = item.laneCount.coerceAtLeast(1).coerceAtMost(12)
+                        val safeLaneIndex = item.laneIndex.coerceIn(0, safeLaneCount - 1)
+                        val laneWidthF = cellWidth / safeLaneCount
+                        val leftF = safeLaneIndex * laneWidthF
+                        val x = dayX + leftF.roundToInt()
+                        
+                        // Y: (startSection - 1) * nodeHeight
+                        val y = ((item.safeStartSection - 1) * nodeHeightPx).roundToInt()
+                        
+                        placeable.place(x, y)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 课程卡片组件
+ *
+ * 在网格中显示的单个课程块。
+ *
+ * @param course 课程数据
+ * @param isCurrentWeek 是否为本周课程 (非本周课程显示灰色)
+ * @param onClick 点击回调
+ */
+@Composable
+fun CourseCard(
+    course: Course,
+    isCurrentWeek: Boolean,
+    isWallpaperSet: Boolean,
+    onClick: () -> Unit
+) {
+    val settings = LocalAppSettings.current
+    if (settings.campusAppearance.fitTimetableToScreen) {
+        CompactCourseCard(course, isCurrentWeek, onClick)
+        return
+    }
+    val highContrast = settings.campusAppearance.highContrast
+    val rawColor = CourseColorUtils.getTimetableColor(course, isCurrentWeek, highContrast, com.dawncourse.core.ui.util.LocalCoursePalette.current)
+    val textColor = CourseColorUtils.getBestContentColor(rawColor)
+    Column(Modifier.fillMaxSize().padding(2.dp)
+        .glassSurface(RoundedCornerShape(settings.cardCornerRadius.dp), rawColor, forceOpaque = highContrast || !isCurrentWeek)
+        .clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (settings.showCourseIcons) Icon(Icons.Default.Book, null, tint = textColor, modifier = Modifier.size(16.dp))
+        Text(course.name, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 15.sp), color = textColor)
+        if (course.location.isNotBlank()) Text(course.location, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp), color = textColor)
+        if (course.teacher.isNotBlank()) Text(course.teacher, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp), color = textColor)
+        if (!isCurrentWeek) Text("非本周", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp), color = textColor)
+        if (course.isModified) Text("已调课", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp), color = textColor)
+    }
+}
+
+/**
+ * 非本周课程卡片颜色计算
+ *
+ * 处理策略：
+ * 1. 基于课程原色
+ * 2. 去饱和、降亮度，降低视觉存在感
+ * 3. 降低透明度，让背景更柔和
+ */
+private fun buildNonCurrentCourseColor(rawColor: Color): Color {
+    val hsl = FloatArray(3)
+    ColorUtils.colorToHSL(rawColor.toArgb(), hsl)
+    hsl[1] = (hsl[1] * 0.2f).coerceIn(0f, 0.6f)
+    hsl[2] = (hsl[2] * 0.7f).coerceIn(0.3f, 0.8f)
+    return Color(ColorUtils.HSLToColor(hsl)).copy(alpha = 0.3f)
+}
+
+private fun resolveCourseTextColor(baseColor: Color, surfaceColor: Color, fallback: Color): Color {
+    val baseComposite = Color(
+        ColorUtils.compositeColors(baseColor.toArgb(), surfaceColor.toArgb())
+    )
+    val baseArgb = baseComposite.toArgb()
+    val fallbackContrast = ColorUtils.calculateContrast(fallback.toArgb(), baseArgb)
+    val lightText = Color.White
+    val darkText = Color(0xFF121212)
+    val lightContrast = ColorUtils.calculateContrast(lightText.toArgb(), baseArgb)
+    val darkContrast = ColorUtils.calculateContrast(darkText.toArgb(), baseArgb)
+    val best = if (lightContrast >= darkContrast) lightText else darkText
+    return if (fallbackContrast >= 3.0) fallback else best
+}
+
+/**
+ * 假期模式视图
+ *
+ * 当当前日期超过学期总周数或未到开学日期时显示。
+ *
+ * @param modifier 修饰符
+ * @param isBeforeSemesterStart 是否处于开学前
+ */
+@Composable
+fun HolidayView(
+    modifier: Modifier = Modifier,
+    isBeforeSemesterStart: Boolean,
+    daysUntilSemesterStart: Long? = null
+) {
+    // 提示文案：区分“开学前”与“学期结束”
+    val titleText = if (isBeforeSemesterStart) "还未开学哦" else "好好享受假期吧！"
+    val descText = if (isBeforeSemesterStart) {
+        if (daysUntilSemesterStart != null) {
+            if (daysUntilSemesterStart == 0L) {
+                "明天就要接受知识的洗礼了"
+            } else {
+                "距开学还有 ${daysUntilSemesterStart} 天"
+            }
+        } else {
+            "开学后将自动显示课程表，请耐心等待。"
+        }
+    } else {
+        "本学期课程已全部结束，下学期也要加油哦。"
+    }
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.BeachAccess,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(120.dp)
+                    .padding(bottom = 24.dp)
+                    .alpha(0.8f),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            
+            Text(
+                text = titleText,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                ),
+                color = MaterialTheme.colorScheme.primary
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = descText,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 32.dp)
+            )
+        }
+    }
+}
+
+private fun cleanTeacherText(raw: String): String {
+    if (raw.isBlank()) return ""
+    var cleaned = raw.replace(Regex("\\s+"), " ").trim()
+    cleaned = cleaned.replace(Regex("^(教师|任课教师)\\s*[:：]?\\s*"), "")
+    val stopRegex = Regex("(教学班组成|教学班|考核方式|课程学时组成|课程学时|课程性质|课程属性|课程类别|课程类型|选课备注|备注|人数|班级组成|班级|课序号|课程号|课程代码|开课单位|上课对象|授课对象|授课形式)")
+    val match = stopRegex.find(cleaned)
+    if (match != null && match.range.first > 0) {
+        cleaned = cleaned.substring(0, match.range.first).trim()
+    }
+    cleaned = cleaned.trimEnd { it == '，' || it == ',' || it == ';' || it == '；' || it == '/' }
+    return cleaned
+}

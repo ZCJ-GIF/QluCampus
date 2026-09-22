@@ -1,0 +1,430 @@
+// QluCampus modification, 2026-09-21: school timetable and grades fork; GPL-3.0, upstream attribution retained.
+package com.dawncourse.feature.timetable
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.dawncourse.core.ui.components.glassSurface
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.activity.compose.ReportDrawnWhen
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.dawncourse.core.domain.model.Course
+import com.dawncourse.core.domain.model.SyncProviderType
+import com.dawncourse.core.ui.theme.LocalAppSettings
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+
+import androidx.compose.runtime.saveable.rememberSaveable
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
+
+/**
+ * 课表功能入口路由 (Composable Route)
+ *
+ * 负责连接 ViewModel 和 UI，处理导航事件。
+ *
+ * @param viewModel [TimetableViewModel] 实例
+ * @param onSettingsClick 跳转设置点击回调
+ * @param onAddClick 添加课程点击回调
+ * @param onImportClick 导入课程点击回调
+ * @param onCourseClick 课程点击回调 (用于编辑)
+ */
+@Composable
+fun TimetableRoute(
+    viewModel: TimetableViewModel = hiltViewModel(),
+    onSettingsClick: () -> Unit,
+    onAddClick: () -> Unit,
+    onImportClick: () -> Unit,
+    onCourseClick: (Long) -> Unit,
+    onNavigateToQidiSync: () -> Unit,
+    onNavigateToZfSync: () -> Unit,
+    onManageProfiles: () -> Unit = {},
+    bottomOverlayPadding: Dp = 0.dp
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val userMessage by viewModel.userMessage.collectAsState()
+    val boundProvider by viewModel.boundProvider.collectAsState()
+    
+    val bar: SchoolTimetableBarViewModel = hiltViewModel()
+    val active by bar.context.collectAsState()
+    androidx.compose.runtime.key(active?.profile?.id, active?.semester?.id) {
+    SchoolTimetableControls(onManageProfiles, bar) { profileName, chooseProfile, refreshProfile, canRefresh ->
+    TimetableScreen(
+        uiState = uiState,
+        userMessage = userMessage,
+        onUserMessageShown = { viewModel.userMessageShown() },
+        onAddClick = onAddClick,
+        onImportClick = onImportClick,
+        // 齐鲁版统一通过学校共享会话手动导入，避免另存一套学校密码。
+        onSyncClick = onImportClick,
+        onSettingsClick = onSettingsClick,
+        onCourseClick = onCourseClick,
+        onUndoReschedule = { viewModel.undoReschedule(it) },
+        onConfirmDelete = { viewModel.deleteCoursesWithUndo(it) },
+        onUndoDelete = { viewModel.undoDelete() },
+        profileName = profileName,
+        onChooseProfile = chooseProfile,
+        onRefreshProfile = refreshProfile,
+        onManageProfiles = onManageProfiles,
+        canRefreshProfile = canRefresh,
+        bottomOverlayPadding = bottomOverlayPadding
+    )
+    }
+    }
+}
+
+/**
+ * 课表界面 (Screen)
+ *
+ * 课表功能的主界面，包含以下核心部分：
+ * 1. [TimetableBackground]: 沉浸式背景
+ * 2. [TimetableTopBar]: 顶部操作栏 (周次切换、功能入口)
+ * 3. [HorizontalPager]: 周次切换容器
+ * 4. [TimetableGrid]: 课程网格展示
+ * 5. [CourseDetailSheet]: 课程详情弹窗
+ *
+ * @param uiState UI 状态
+ * @param userMessage 用户提示消息
+ * @param onUserMessageShown 消息已显示回调
+ * @param onAddClick 添加课程回调
+ * @param onImportClick 导入课程回调
+ * @param onSettingsClick 设置回调
+ * @param onCourseClick 课程点击回调
+ * @param onUndoReschedule 撤销调课回调
+ * @param onConfirmDelete 确认删除回调
+ * @param onUndoDelete 撤销删除回调
+ */
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalFoundationApi::class,
+    ExperimentalComposeUiApi::class
+)
+@Composable
+internal fun TimetableScreen(
+    uiState: TimetableUiState,
+    userMessage: String? = null,
+    onUserMessageShown: () -> Unit = {},
+    onAddClick: () -> Unit,
+    onImportClick: () -> Unit,
+    onSyncClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onCourseClick: (Long) -> Unit,
+    onUndoReschedule: (Course) -> Unit,
+    onConfirmDelete: (List<Course>) -> Unit,
+    onUndoDelete: () -> Unit,
+    profileName: String = "",
+    onChooseProfile: () -> Unit = {},
+    onRefreshProfile: () -> Unit = {},
+    onManageProfiles: () -> Unit = {},
+    canRefreshProfile: Boolean = false,
+    bottomOverlayPadding: Dp = 0.dp
+) {
+    // 选中的课程，用于显示详情弹窗
+    var selectedCourse by remember { mutableStateOf<Course?>(null) }
+    // 选中的课程 ID，用于显示调课弹窗
+    var rescheduleCourseId by remember { mutableStateOf<Long?>(null) }
+    // 待删除的课程列表（用于显示确认弹窗）
+    var coursesToDelete by remember { mutableStateOf<List<Course>?>(null) }
+    // 待删除的目标课程（用于区分“仅删除本时段”）
+    var targetCourseForDelete by remember { mutableStateOf<Course?>(null) }
+    
+    // 标记是否已自动滚动到当前周 (使用 rememberSaveable 在配置变更/导航返回时保持状态，冷启动时重置)
+    var hasScrolledToCurrentWeek by rememberSaveable { mutableStateOf(false) }
+    
+    val snackbarHostState = remember { SnackbarHostState() }
+    
+    val settings = LocalAppSettings.current
+    val timetableTextColor = MaterialTheme.colorScheme.onSurface
+
+    // 只在 Repository 驱动的真实 Success 已进入可渲染课表分支时上报 fully drawn。
+    // Macrobenchmark 对应等待的 testTag 同样只附着在该分支，避免误等加载期周次按钮。
+    ReportDrawnWhen { TimetableBenchmarkContract.isContentReady(uiState) }
+
+    // 显示 Snackbar
+    LaunchedEffect(userMessage) {
+        if (userMessage != null) {
+            val showUndo = userMessage.startsWith("课程已删除") || userMessage.startsWith("已删除")
+            val result = if (showUndo) {
+                snackbarHostState.showSnackbar(
+                    message = userMessage,
+                    actionLabel = "撤销",
+                    withDismissAction = true
+                )
+            } else {
+                snackbarHostState.showSnackbar(message = userMessage)
+            }
+            if (showUndo && result == SnackbarResult.ActionPerformed) {
+                onUndoDelete()
+            }
+            onUserMessageShown()
+        }
+    }
+    
+    // 计算当前真实周次
+    val realCurrentWeek = (uiState as? TimetableUiState.Success)?.currentWeek ?: 1
+    val semesterStartDate = (uiState as? TimetableUiState.Success)?.semesterStartDate
+    val isBeforeSemesterStart = semesterStartDate != null && LocalDate.now().isBefore(semesterStartDate)
+    // 学期总周数由 Room 驱动的 UiState 提供，禁止回退到 AppSettings 的旧缓存。
+    val configuredWeeks = when (uiState) {
+        is TimetableUiState.Success -> uiState.totalWeeks
+        else -> 20
+    }
+    // 同时兜住“课程周数超过学期总周数”的异常/旧数据（issue #109）：
+    // 只上一周的课若落在第 N 周且 N > Room 中的学期总周数，不能被“假期页”挡住，
+    // 周次选择器也选不到。取当前学期总周数与所有课程最大结束周的较大值。
+    // coerceAtMost(53)：即使某条脏数据带了异常大的 endWeek，也不会把 Pager /
+    // 周次菜单（TimetableComponents.kt 里的 for i in 1..totalWeeks）撑爆。
+    val maxCourseWeek = ((uiState as? TimetableUiState.Success)?.courses?.maxOfOrNull { it.endWeek } ?: 0)
+        .coerceAtMost(53)
+    val maxWeeks = maxOf(configuredWeeks, maxCourseWeek)
+    // 允许 Pager 扩展到当前真实周次（如果超过总周数）
+    val basePageCount = maxOf(maxWeeks, realCurrentWeek.coerceAtLeast(1))
+    val hasHolidayPage = isBeforeSemesterStart
+    val pageCount = basePageCount + if (hasHolidayPage) 1 else 0
+
+    // Pager 状态管理
+    val pagerState = rememberPagerState(
+        initialPage = if (hasHolidayPage) {
+            val targetPage = if (realCurrentWeek <= 0) 0 else realCurrentWeek
+            targetPage.coerceIn(0, pageCount - 1)
+        } else {
+            (realCurrentWeek - 1).coerceIn(0, pageCount - 1)
+        },
+        pageCount = { pageCount }
+    )
+    
+    // 根据 Pager 计算当前展示的周次
+    val displayedWeek by remember(hasHolidayPage) {
+        derivedStateOf {
+            if (hasHolidayPage) pagerState.currentPage else pagerState.currentPage + 1
+        }
+    }
+    
+    val scope = rememberCoroutineScope()
+
+    // 首次加载时自动滚动到当前周
+    LaunchedEffect(uiState) {
+        if (!hasScrolledToCurrentWeek && uiState is TimetableUiState.Success) {
+            // 仅当学期数据已加载（semesterStartDate != null）时才执行自动滚动，
+            // 避免在数据加载初期（Success 但无 semesterStartDate）错误消耗滚动标记。
+            if (uiState.semesterStartDate != null) {
+                val targetPage = (uiState.currentWeek - 1).coerceIn(0, pageCount - 1)
+                if (targetPage != pagerState.currentPage) {
+                    pagerState.scrollToPage(targetPage)
+                }
+                hasScrolledToCurrentWeek = true
+            }
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        // 1. 背景图 (沉浸式) - 使用独立组件以优化性能
+        // Background is drawn once by the shared app backdrop.
+
+        // 2. 内容层 (Scaffold)
+        // 关键：Scaffold 背景设为透明，否则会挡住下面的壁纸
+        Scaffold(
+            containerColor = Color.Transparent, // 透明背景
+            snackbarHost = { SnackbarHost(snackbarHostState, Modifier.padding(bottom = bottomOverlayPadding)) },
+            topBar = {
+                // 顶部栏 (透明背景)
+                TimetableTopBar(
+                    displayedWeek = displayedWeek,
+                    realCurrentWeek = realCurrentWeek,
+                    isHolidayMode = displayedWeek == 0 || displayedWeek > maxWeeks,
+                    totalWeeks = maxWeeks,
+                    onWeekSelected = { week ->
+                        scope.launch {
+                            hasScrolledToCurrentWeek = true
+                            val targetPage = if (hasHolidayPage) week else (week - 1)
+                            val safeTargetPage = targetPage.coerceIn(0, pageCount - 1)
+                            pagerState.animateScrollToPage(safeTargetPage)
+                        }
+                    },
+                    onSettingsClick = onSettingsClick,
+                    onAddClick = onAddClick,
+                    onImportClick = onImportClick,
+                    onSyncClick = onSyncClick,
+                    profileName = profileName,
+                    onChooseProfile = onChooseProfile,
+                    onRefreshProfile = onRefreshProfile,
+                    onManageProfiles = onManageProfiles,
+                    canRefreshProfile = canRefreshProfile
+                )
+            },
+            contentColor = MaterialTheme.colorScheme.onBackground
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                // 3. 可滚动的课表区域 (Pager)
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.weight(1f),
+                    beyondViewportPageCount = 1 // 预加载前后各1页，大幅提升滑动流畅度（Compose 1.7+ 由 beyondBoundsPageCount 更名）
+                ) { page ->
+                    val week = if (hasHolidayPage) page else page + 1
+                    
+                    if (week > maxWeeks || (hasHolidayPage && week == 0)) {
+                        val daysUntilSemesterStart = if (hasHolidayPage && week == 0) {
+                            semesterStartDate?.let { ChronoUnit.DAYS.between(LocalDate.now(), it).coerceAtLeast(0) }
+                        } else {
+                            null
+                        }
+                        HolidayView(
+                            modifier = Modifier.fillMaxSize(),
+                            isBeforeSemesterStart = hasHolidayPage && week == 0,
+                            daysUntilSemesterStart = daysUntilSemesterStart
+                        )
+                    } else {
+                        CompleteTimetableLayout((uiState as? TimetableUiState.Success)?.courses.orEmpty(), week, bottomOverlayPadding) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            // 3.1 星期栏头部 (跟随页面滑动)
+                            WeekHeader(
+                                isCurrentWeek = week == realCurrentWeek,
+                                displayedWeek = week,
+                                semesterStartDate = semesterStartDate,
+                                textColor = timetableTextColor
+                            )
+
+                            // 3.2 垂直滚动区域 (时间轴 + 课程网格)
+                            val scrollState = rememberScrollState()
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .verticalScroll(scrollState)
+                                    // This padding scrolls with the grid so the final course can clear the floating bar.
+                                    .padding(bottom = bottomOverlayPadding)
+                            ) {
+                                // 左侧时间轴 (固定宽度)
+                                TimeColumnIndicator(textColor = timetableTextColor, modifier = Modifier.glassSurface())
+
+                                // 右侧课程网格
+                                if (uiState is TimetableUiState.Success) {
+                                    TimetableGrid(
+                                        courses = uiState.courses,
+                                        currentWeek = week,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            // 仅导出 resource-id 供 UiAutomator 等待，不写入无障碍文案。
+                                            .semantics { testTagsAsResourceId = true }
+                                            .testTag(TimetableBenchmarkContract.READY_TEST_TAG),
+                                        onCourseClick = { course -> selectedCourse = course }
+                                    )
+                                } else {
+                                    // 空状态或加载状态
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(top = 100.dp),
+                                        contentAlignment = androidx.compose.ui.Alignment.Center
+                                    ) {
+                                        Text("加载中...", style = MaterialTheme.typography.bodyLarge)
+                                    }
+                                }
+                            }
+                        }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 课程详情弹窗
+    val currentSelectedCourse = selectedCourse
+    if (currentSelectedCourse != null) {
+        CourseDetailSheet(
+            course = currentSelectedCourse,
+            onDismissRequest = { selectedCourse = null },
+            onEditClick = {
+                // 使用 currentSelectedCourse 作为稳定快照，避免回调触发时 state 已被清空导致空指针。
+                onCourseClick(currentSelectedCourse.id)
+                selectedCourse = null
+            },
+            onRescheduleClick = {
+                // 使用 currentSelectedCourse 作为稳定快照，避免回调触发时 state 已被清空导致空指针。
+                rescheduleCourseId = currentSelectedCourse.id
+                selectedCourse = null
+            },
+            onUndoRescheduleClick = {
+                // 使用 currentSelectedCourse 作为稳定快照，避免回调触发时 state 已被清空导致空指针。
+                onUndoReschedule(currentSelectedCourse)
+                selectedCourse = null
+            },
+            onDeleteClick = {
+                // 使用 currentSelectedCourse 作为稳定快照，避免回调触发时 state 已被清空导致空指针。
+                val currentCourse = currentSelectedCourse
+                targetCourseForDelete = currentCourse
+                
+                // 查找同名且同地点的所有课程时段 (简单判断是否为同一门课)
+                val sameCourses = (uiState as? TimetableUiState.Success)?.courses?.filter {
+                    it.name == currentCourse.name && it.teacher == currentCourse.teacher
+                } ?: listOf(currentCourse)
+                
+                coursesToDelete = sameCourses
+                selectedCourse = null // 关闭详情弹窗
+            }
+        )
+    }
+    
+    // 智能删除确认弹窗
+    val currentCoursesToDelete = coursesToDelete
+    val currentTargetCourseForDelete = targetCourseForDelete
+    if (currentCoursesToDelete != null && currentTargetCourseForDelete != null) {
+        DeleteConfirmationDialog(
+            coursesToDelete = currentCoursesToDelete,
+            targetCourse = currentTargetCourseForDelete,
+            onConfirmDelete = { courses ->
+                onConfirmDelete(courses)
+                coursesToDelete = null
+                targetCourseForDelete = null
+            },
+            onDismiss = {
+                coursesToDelete = null
+                targetCourseForDelete = null
+            }
+        )
+    }
+    
+    // 调课弹窗
+    val currentRescheduleCourseId = rescheduleCourseId
+    if (currentRescheduleCourseId != null) {
+        CourseRescheduleSheet(
+            courseId = currentRescheduleCourseId,
+            initialWeek = displayedWeek,
+            onDismissRequest = { rescheduleCourseId = null }
+        )
+    }
+}

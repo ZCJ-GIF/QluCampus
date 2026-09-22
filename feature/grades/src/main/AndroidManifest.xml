@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- aTrust 官方 Android 客户端；仅查询此应用，不读取完整安装列表。 -->
+    <queries>
+        <package android:name="com.sangfor.atrust" />
+    </queries>
+</manifest>

@@ -1,0 +1,121 @@
+// QluCampus modification, 2026-09-21: school timetable and grades fork; GPL-3.0, upstream attribution retained.
+pluginManagement {
+    repositories {
+        if (System.getenv("CI") == "true") {
+            google()
+            mavenCentral()
+            gradlePluginPortal()
+        } else {
+            maven { url = uri("https://maven.aliyun.com/repository/public") }
+            maven { url = uri("https://maven.aliyun.com/repository/google") }
+            maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
+            google()
+            mavenCentral()
+            gradlePluginPortal()
+        }
+    }
+}
+
+buildscript {
+    repositories {
+        if (System.getenv("CI") == "true") {
+            google()
+            mavenCentral()
+        } else {
+            maven { url = uri("https://maven.aliyun.com/repository/public") }
+            maven { url = uri("https://maven.aliyun.com/repository/google") }
+            mavenCentral()
+            google()
+        }
+    }
+    configurations.classpath {
+        resolutionStrategy {
+            // 强制 Netty 使用安全版本 (>= 4.1.125.Final)
+            force("io.netty:netty-codec-http2:4.2.16.Final")
+            force("io.netty:netty-handler:4.2.16.Final")
+            force("io.netty:netty-codec:4.2.16.Final")
+            force("io.netty:netty-common:4.2.16.Final")
+            force("io.netty:netty-codec-http:4.2.16.Final")
+            force("io.netty:netty-transport-native-epoll:4.2.16.Final")
+            force("io.netty:netty-transport-native-unix-common:4.2.16.Final")
+            
+            // 强制 Bouncy Castle 使用安全版本 (jdk15on: 1.70, jdk18on: 1.83)
+            // 旧插件可能仍依赖 jdk15on
+            force("org.bouncycastle:bcprov-jdk15on:1.70")
+            force("org.bouncycastle:bcpkix-jdk15on:1.70")
+            force("org.bouncycastle:bcprov-jdk18on:1.83")
+            force("org.bouncycastle:bcpkix-jdk18on:1.83")
+            
+            // 强制 Apache Commons IO (>= 2.18.0)
+            force("commons-io:commons-io:2.22.0")
+            
+            // 强制 Apache Commons Compress (>= 1.28.0)
+            force("org.apache.commons:commons-compress:1.28.0")
+            
+            // 强制 Protobuf-java (>= 3.25.5)
+            force("com.google.protobuf:protobuf-java:4.35.1")
+            
+            // 强制 JDOM2 (>= 2.0.6.1)
+            force("org.jdom:jdom2:2.0.6.1")
+            
+            // 强制 Jose4j (>= 0.9.6)
+            force("org.bitbucket.b_c:jose4j:0.9.6")
+            
+            // 强制 Guava (>= 33.0.0-android)
+            force("com.google.guava:guava:33.6.0-android")
+            
+            // 强制 Gson (>= 2.10.1)
+            force("com.google.code.gson:gson:2.13.2")
+
+            dependencySubstitution {
+                substitute(module("commons-io:commons-io")).using(module("commons-io:commons-io:2.22.0"))
+                substitute(module("org.apache.commons:commons-compress")).using(module("org.apache.commons:commons-compress:1.28.0"))
+                substitute(module("com.google.protobuf:protobuf-java")).using(module("com.google.protobuf:protobuf-java:4.35.1"))
+                substitute(module("org.jdom:jdom2")).using(module("org.jdom:jdom2:2.0.6.1"))
+                substitute(module("org.bitbucket.b_c:jose4j")).using(module("org.bitbucket.b_c:jose4j:0.9.6"))
+                substitute(module("com.google.guava:guava")).using(module("com.google.guava:guava:33.6.0-android"))
+                substitute(module("com.google.code.gson:gson")).using(module("com.google.code.gson:gson:2.13.2"))
+                substitute(module("io.netty:netty-codec-http2")).using(module("io.netty:netty-codec-http2:4.2.16.Final"))
+                substitute(module("io.netty:netty-handler")).using(module("io.netty:netty-handler:4.2.16.Final"))
+                substitute(module("io.netty:netty-codec")).using(module("io.netty:netty-codec:4.2.16.Final"))
+                substitute(module("io.netty:netty-common")).using(module("io.netty:netty-common:4.2.16.Final"))
+                substitute(module("io.netty:netty-codec-http")).using(module("io.netty:netty-codec-http:4.2.16.Final"))
+                substitute(module("io.netty:netty-transport-native-epoll")).using(module("io.netty:netty-transport-native-epoll:4.2.16.Final"))
+                substitute(module("io.netty:netty-transport-native-unix-common")).using(module("io.netty:netty-transport-native-unix-common:4.2.16.Final"))
+                substitute(module("org.bouncycastle:bcprov-jdk15on")).using(module("org.bouncycastle:bcprov-jdk15on:1.70"))
+                substitute(module("org.bouncycastle:bcpkix-jdk15on")).using(module("org.bouncycastle:bcpkix-jdk15on:1.70"))
+                substitute(module("org.bouncycastle:bcprov-jdk18on")).using(module("org.bouncycastle:bcprov-jdk18on:1.83"))
+                substitute(module("org.bouncycastle:bcpkix-jdk18on")).using(module("org.bouncycastle:bcpkix-jdk18on:1.83"))
+            }
+        }
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        if (System.getenv("CI") == "true") {
+            google()
+            mavenCentral()
+        } else {
+            maven { url = uri("https://maven.aliyun.com/repository/public") }
+            maven { url = uri("https://maven.aliyun.com/repository/google") }
+            google()
+            mavenCentral()
+        }
+    }
+}
+
+rootProject.name = "QluCampus"
+include(":feature:grades")
+include(":app")
+include(":core:data")
+include(":core:domain")
+include(":core:ui")
+include(":feature:timetable")
+include(":feature:import")
+include(":feature:widget") // Phase 3
+include(":feature:settings") // Phase 4
+include(":feature:update")
+include(":benchmark")
+include(":baselineprofile")
+
