@@ -59,7 +59,7 @@ buildscript {
             force("org.jdom:jdom2:2.0.6.1")
             
             // 强制 Jose4j (>= 0.9.6)
-            force("org.bitbucket.b_c:jose4j:0.9.6")
+            force("org.bitbucket.b_c:jose4j:0.9.7")
             
             // 强制 Guava (>= 33.0.0-android)
             force("com.google.guava:guava:33.6.0-android")
