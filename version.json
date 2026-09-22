@@ -1,12 +1,12 @@
 {
   "applicationId": "com.qlucampus.app",
-  "versionCode": 10,
-  "versionName": "0.2.8",
-  "title": "齐鲁课表 0.2.8",
-  "updateContent": "齐鲁课表 0.2.8 测试版（Android 8.0 及以上）\n\n- 新增云雾蓝、鼠尾草、奶油杏、雾紫四套柔和配色，支持浅色/深色模式，并保留原有配色。\n- 在“设置 → 配色风格与背景”中，将自定义背景独立应用到课表顶栏、底部导航、课程卡片及设置/查询面板。\n- 新增“课程颜色适应背景”，默认开启：调整课程显示色、文字明暗和最低遮罩，保证课程名称与地点清楚可读。\n- 高对比度实色、非本周灰色、成绩合格/挂科淡色背景保留；课程保存颜色不被改写。\n- 已有 0.2.7 可在软件中检查和下载更新；保持同一包名、签名及数据库，可直接覆盖安装。\n\n提供测试 APK 和对应 GPL-3.0 源码，基于 HF-CYGG/Dawn-Course，保留原作者署名。\n本次验证在后台模拟器完成；真实学校接口和手机 aTrust 权限状态仍以手机核验为准。\n问题反馈：作者微信 a3130149711。\n",
+  "versionCode": 11,
+  "versionName": "0.2.9",
+  "title": "齐鲁课表 0.2.9",
+  "updateContent": "新增 Wake Up 风格，修复图片背景被栏位毛玻璃遮住，并将课程边缘线改为独立开关。\n\n- 设置 → 配色风格与背景：选择 Wake Up，使用浅蓝灰渐变和粉蓝杏白字卡片；关闭课程颜色适应背景可保留粉彩原色，开启则优先保护白字清晰度。\n- 课程边缘线默认关闭，可独立开启，切换风格与自适应不会自动打开。\n- 顶栏、导航栏及面板默认显示背景原图。新增独立毛玻璃开关及遮罩浓度，默认 18%，去掉重复叠加遮罩。\n- 包名和签名保持一致，可直接覆盖升级；保留课表、背景、成绩及其他设置。\n\n提供 APK、对应 GPL-3.0 源码、许可和 SHA-256 校验文件。学校原生查询联调状态沿用维护文档，本版仅调整外观。\n",
   "forceUpdate": false,
   "type": "feature",
   "date": "2026-09-21",
-  "downloadUrl": "https://github.com/ZCJ-GIF/QluCampus/releases/download/v0.2.8/QluCampus-0.2.8-debug.apk",
-  "sha256": "85b06b568e0c8c01d32ba613b6bf663762c753a1ccd945da19f18dc9a94d5d46"
+  "downloadUrl": "https://github.com/ZCJ-GIF/QluCampus/releases/download/v0.2.9/QluCampus-0.2.9-debug.apk",
+  "sha256": "89c8b11736b54837c60d16b16e43fdbc11f7c4b209b17a819eeca7f8c10f832c"
 }
