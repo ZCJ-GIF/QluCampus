@@ -64,6 +64,7 @@ struct GpaView: View {
                 let result = Grades.gpa(rows.filter { chosen.contains($0.0) }.map { $0.2 })
                 Text("GPA：\(Grades.format(result.value))").font(.title.bold()).accessibilityIdentifier("gpaResult")
                 Text("已选 \(chosen.count) 门 · 计入学分 \(Grades.format(result.credits))")
+                if result.excluded > 0 { Text("其中 \(result.excluded) 门数据不完整，未计入结果").foregroundStyle(.orange) }
                 Text("Σ（课程学分 × 学校绩点）÷ Σ学分。缺少学分、绩点或匹配有歧义的课程不可选，不从总评推算。").font(.footnote)
                 HStack { Button("全选有效课程") { chosen = Set(rows.filter { Grades.inputs($0.2) != nil }.map { $0.0 }) }; Spacer(); Button("清空") { chosen = [] } }
             }

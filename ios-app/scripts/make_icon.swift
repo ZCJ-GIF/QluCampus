@@ -9,7 +9,7 @@ var images: [[String:String]] = []
 for (idiom, size, scales) in specs {
     for scale in scales {
         let pixels = Int(size * Double(scale)), filename = "calendar-\(pixels).png"
-        let bitmap = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:pixels,pixelsHigh:pixels,bitsPerSample:8,samplesPerPixel:3,hasAlpha:false,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
+        let bitmap = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:pixels,pixelsHigh:pixels,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
         NSGraphicsContext.saveGraphicsState()
         let context = NSGraphicsContext(bitmapImageRep:bitmap)!
         NSGraphicsContext.current = context

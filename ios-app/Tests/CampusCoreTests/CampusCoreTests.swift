@@ -46,6 +46,9 @@ final class CampusCoreTests: XCTestCase {
         let hidden = s.visible(unlocked:false)
         XCTAssertEqual(hidden.details.count, 1); XCTAssertEqual(hidden.details[0].score, "62"); XCTAssertFalse(hidden.detailed)
         XCTAssertEqual(s.visible(unlocked:true).details.count, 2)
+        let consistent = GradeSnapshot(owner:"one", term:.current, detailed:true, details:[GradeDetail(name:"A",credits:"2.0",component:"平时",score:"85"),GradeDetail(name:"A",credits:"2",component:"总评",score:"62")],points:[GradePoint(name:"A",point:"3.5")])
+        XCTAssertEqual(Grades.gpa(Grades.match(consistent).courses).value, Decimal(string:"3.5"))
+        XCTAssertEqual(consistent.visible(unlocked:false).details.first?.credits, "2.0")
     }
     func testXlsxRoundTripChineseDecimalsAndFormulaText() throws {
         let rows = [["课程名称","成绩","绩点"],["化学 & 实验","60.00","3.50"],["=SUM(A1)","未提供","0"]]

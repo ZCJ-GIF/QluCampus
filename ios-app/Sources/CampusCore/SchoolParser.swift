@@ -148,8 +148,8 @@ public enum Grades {
         guard t.count <= 38, t.range(of: "^\\d+(?:\\.\\d+)?$", options: .regularExpression) != nil else { return nil }; return Decimal(string: t, locale: Locale(identifier: "en_US_POSIX"))
     }
     public static func inputs(_ c: MatchedGrade) -> (Decimal, Decimal)? {
-        let values = Set(c.details.map { $0.credits })
-        guard values.count == 1, let raw = values.first, let credits = decimal(raw), credits > 0, let point = decimal(c.point?.point ?? ""), point >= 0 else { return nil }; return (credits, point)
+        let values = c.details.compactMap { decimal($0.credits) }
+        guard values.count == c.details.count, Set(values).count == 1, let credits = values.first, credits > 0, let point = decimal(c.point?.point ?? ""), point >= 0 else { return nil }; return (credits, point)
     }
     public static func gpa(_ courses: [MatchedGrade]) -> (value: Decimal?, credits: Decimal, excluded: Int) {
         var credits = Decimal.zero, weighted = Decimal.zero, excluded = 0

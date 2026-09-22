@@ -110,8 +110,8 @@ public struct GradeSnapshot: Codable {
             var first = rows[0]
             let totals = rows.filter { $0.component.contains("总评") || $0.component == "成绩" }
             first.component = "总评"; first.score = totals.count == 1 ? totals[0].score : ""
-            let credits = Set(rows.map { $0.credits.trimmingCharacters(in: .whitespaces) })
-            first.credits = credits.count == 1 ? first.credits : ""; return first
+            let credits = rows.compactMap { Grades.decimal($0.credits) }
+            first.credits = credits.count == rows.count && Set(credits).count == 1 ? first.credits : ""; return first
         }.sorted { $0.key < $1.key }
         return result
     }
