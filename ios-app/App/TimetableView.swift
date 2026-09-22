@@ -6,7 +6,10 @@ struct TimetableView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.campusTheme) var theme
     var openSettings: () -> Void
-    @State private var week = 1, importing = false, editingTable = false, managing = false
+    @State private var week = 1
+    @State private var importing = false
+    @State private var editingTable = false
+    @State private var managing = false
     @State private var editingCourse: Course? = nil
     var body: some View {
         GeometryReader { geo in
@@ -105,7 +108,9 @@ struct TableEditor: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) var dismiss
     var table: Timetable?
-    @State private var name = "我的课表", term = Term.current, date = Dates.monday(Date())
+    @State private var name = "我的课表"
+    @State private var term = Term.current
+    @State private var date = Dates.monday(Date())
     var body: some View {
         NavigationStack { Form {
             TextField("课表名称", text: $name)
@@ -122,7 +127,8 @@ struct TableEditor: View {
 struct TableManager: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) var dismiss
-    @State private var edit: Timetable? = nil, new = false
+    @State private var edit: Timetable? = nil
+    @State private var new = false
     var body: some View {
         NavigationStack { List {
             ForEach(model.schedules) { table in
@@ -138,7 +144,8 @@ struct CourseEditor: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) var dismiss
     @State var course: Course
-    @State private var weeks = "1-20", error = ""
+    @State private var weeks = "1-20"
+    @State private var error = ""
     var body: some View {
         NavigationStack { Form {
             TextField("课程名称", text: $course.name).accessibilityIdentifier("courseName")
@@ -163,10 +170,18 @@ struct CourseEditor: View {
 struct ImportForm: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) var dismiss
-    @State private var term = Term.current, monday = Dates.monday(Date()), name = "学校课表"
+    @State private var term = Term.current
+    @State private var monday = Dates.monday(Date())
+    @State private var name = "学校课表"
     var body: some View {
         NavigationStack { Form {
-            Section { Text("学校账号：\(model.maskedAccount)"); Text("校外先连接手机 aTrust，然后返回导入。").font(.footnote); if model.db.account == nil { Button("前往学校登录") { dismiss(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { model.login() } } }
+            Section {
+                Text("学校账号：\(model.maskedAccount)")
+                Text("校外先连接手机 aTrust，然后返回导入。").font(.footnote)
+                if model.db.account == nil {
+                    Button("前往学校登录") { dismiss(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { model.login() } }
+                }
+            }
             TermPicker(term: $term); TextField("课表名称", text: $name)
             Section("首周周一") { DatePicker("选择日期", selection: $monday, displayedComponents: .date).datePickerStyle(.graphical).environment(\.timeZone, Dates.calendar.timeZone); if Dates.day(monday) != 1 { Text("请选择周一").foregroundStyle(.red) } }
             Button("读取导入预览") { dismiss(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { model.importTable(term: term, firstMonday: monday, name: name) } }.disabled(model.db.account == nil || model.busy || Dates.day(monday) != 1 || name.isEmpty)

@@ -5,8 +5,14 @@ import CampusCore
 struct RoomsView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.campusTheme) var theme
-    @State private var term = Term.current, date = Date(), monday = Dates.monday(Date())
-    @State private var start = 1, end = 2, campus = "", building = "", roomType = ""
+    @State private var term = Term.current
+    @State private var date = Date()
+    @State private var monday = Dates.monday(Date())
+    @State private var start = 1
+    @State private var end = 2
+    @State private var campus = ""
+    @State private var building = ""
+    @State private var roomType = ""
     var query: RoomQuery { RoomQuery(term: term, firstMonday: Dates.string(monday), date: Dates.string(date), start: start, end: end, campus: campus, building: building, type: roomType) }
     var result: RoomResult? { model.db.roomResults.last { $0.owner == model.owner && $0.query == query } }
     var body: some View {

@@ -17,6 +17,14 @@ import CampusCore
         try model.acceptLogin(url:URL(string:School.root + "xtgl/index_initMenu.html")!,student:"student001")
         XCTAssertEqual(model.schedules.count,1)
         XCTAssertEqual(AppModel(directory:folder).schedules.first?.courses.first?.name,"化学")
+        model.unlock("070528")
+        model.openSchoolPage(School.login, login:true)
+        XCTAssertThrowsError(try model.ticket())
+        try model.acceptLogin(url:URL(string:School.root + "xtgl/index_initMenu.html")!,student:"student002")
+        XCTAssertFalse(model.db.gradeUnlocked)
+        try model.acceptLogin(url:URL(string:School.root + "xtgl/index_initMenu.html")!,student:"student001")
+        XCTAssertTrue(model.db.gradeUnlocked)
+        model.lock(); XCTAssertFalse(AppModel(directory:folder).db.gradeUnlocked)
     }
     func testFailedWriteValidationKeepsSavedTimetableAndBackupHidesDetails() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

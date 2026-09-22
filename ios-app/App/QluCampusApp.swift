@@ -8,7 +8,10 @@ import CampusCore
 }
 struct CampusRoot: View {
     @EnvironmentObject var model: AppModel
-    @State private var tab = 0, settings = false, disclaimer = false, hideDisclaimer = false
+    @State private var tab = 0
+    @State private var settings = false
+    @State private var disclaimer = false
+    @State private var hideDisclaimer = false
     @State private var image: UIImage? = nil
     private var theme: CampusTheme { CampusTheme(appearance: model.appearance, image: image) }
     var body: some View {

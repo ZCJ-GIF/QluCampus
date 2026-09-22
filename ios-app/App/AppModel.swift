@@ -16,6 +16,7 @@ struct Database: Codable {
     var schema = 1, account: String? = nil, active: UUID? = nil
     var schedules: [Timetable] = [], grades: [GradeSnapshot] = [], roomResults: [RoomResult] = []
     var appearance = Appearance(), gradeUnlocked = false, disclaimerHidden = false
+    var unlockedAccounts: [String] = []
     func validate() throws {
         guard schema == 1, schedules.count <= 100, grades.count <= 400, roomResults.count <= 30,
               Set(schedules.map(\.id)).count == schedules.count else { throw CampusError.invalid("本地备份格式或数量不支持") }
@@ -39,6 +40,7 @@ struct SharedFile: Identifiable { var id = UUID(), url: URL }
     @Published var options: RoomOptions? = nil
     @Published var revision = UUID()
     private var unreadableStore = false
+    private var reminderRevision = UUID()
     let api = SchoolAPI()
     let directory: URL
     var appearance: Appearance { db.appearance }
@@ -83,20 +85,23 @@ struct SharedFile: Identifiable { var id = UUID(), url: URL }
         do {
             revision = UUID(); options = nil; preview = nil
             try commit { $0.account = nil; $0.active = nil; $0.gradeUnlocked = false }
+            scheduleReminders()
             browser = BrowserRoute(url: url, login: login)
         } catch { message = error.localizedDescription }
     }
     func acceptLogin(url: URL, student: String) throws {
         guard url.scheme == "https", url.host == "jw.qlu.edu.cn", url.path.hasPrefix("/jwglxt/"), !url.path.lowercased().contains("login"), student.range(of: "^[A-Za-z0-9_-]{5,32}$", options: .regularExpression) != nil else { throw CampusError.invalid("请完成统一认证并进入教务主页，再点击完成登录") }
         revision = UUID(); options = nil; preview = nil
-        try commit { $0.account = student; $0.active = $0.schedules.first { $0.owner == student }?.id; $0.gradeUnlocked = false }
+        try commit { $0.account = student; $0.active = $0.schedules.first { $0.owner == student }?.id; $0.gradeUnlocked = $0.unlockedAccounts.contains(student) }
         browser = nil
+        scheduleReminders()
     }
     func logout() {
         guard !busy else { return }
         perform {
             self.revision = UUID(); self.options = nil; self.preview = nil
             try self.commit { $0.account = nil; $0.active = nil; $0.gradeUnlocked = false }
+            self.scheduleReminders()
             await withCheckedContinuation { continuation in
                 WKWebsiteDataStore.default().removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) { continuation.resume() }
             }
@@ -105,6 +110,7 @@ struct SharedFile: Identifiable { var id = UUID(), url: URL }
     func select(_ id: UUID) { do { revision = UUID(); options = nil; try commit { $0.active = id }; scheduleReminders() } catch { message = error.localizedDescription } }
     func saveTable(_ table: Timetable) throws {
         guard table.owner == owner else { throw CampusError.changedAccount }; try table.validate()
+        revision = UUID()
         try commit { state in if let i = state.schedules.firstIndex(where: { $0.id == table.id }) { state.schedules[i] = table } else { state.schedules.append(table) }; state.active = table.id }
         scheduleReminders()
     }
@@ -137,8 +143,8 @@ struct SharedFile: Identifiable { var id = UUID(), url: URL }
             self.message = "成绩已保存到本机"
         }
     }
-    func unlock(_ password: String) { do { guard password == "070528" else { throw CampusError.invalid("密码不正确") }; try commit { $0.gradeUnlocked = true }; message = "平时成绩已开启，可在设置中重新锁定" } catch { message = error.localizedDescription } }
-    func lock() { do { try commit { $0.gradeUnlocked = false } } catch { message = error.localizedDescription } }
+    func unlock(_ password: String) { do { guard password == "070528" else { throw CampusError.invalid("密码不正确") }; let account = owner; try commit { $0.gradeUnlocked = true; if !$0.unlockedAccounts.contains(account) { $0.unlockedAccounts.append(account) } }; message = "平时成绩已开启，可在设置中重新锁定" } catch { message = error.localizedDescription } }
+    func lock() { do { let account = owner; try commit { $0.gradeUnlocked = false; $0.unlockedAccounts.removeAll { $0 == account } } } catch { message = error.localizedDescription } }
     func loadRooms(term: Term, campus: String = "") {
         perform { let ticket = try self.ticket(); let loaded = try await self.api.roomOptions(term: term, campus: campus, ticket: ticket, check: self.check); try self.check(ticket); self.options = loaded }
     }
@@ -188,10 +194,12 @@ struct SharedFile: Identifiable { var id = UUID(), url: URL }
         } catch { message = error.localizedDescription }
     }
     func scheduleReminders() {
+        reminderRevision = UUID(); let generation = reminderRevision
         let center = UNUserNotificationCenter.current(); center.removeAllPendingNotificationRequests()
         guard appearance.reminders, let table = active, let monday = Dates.parse(table.firstMonday) else { return }
         Task {
             guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { message = "请在系统设置中允许课程通知"; return }
+            guard generation == reminderRevision, appearance.reminders else { return }
             var events: [(Date, Course)] = []
             for c in table.courses where c.start <= School.sectionTimes.count {
                 let time = School.sectionTimes[c.start - 1].prefix(5).split(separator: ":").compactMap { Int($0) }
@@ -202,6 +210,7 @@ struct SharedFile: Identifiable { var id = UUID(), url: URL }
                 }
             }
             for (date, c) in events.sorted(by: { $0.0 < $1.0 }).prefix(60) {
+                guard generation == reminderRevision, appearance.reminders else { return }
                 let content = UNMutableNotificationContent(); content.title = c.name; content.body = "10 分钟后上课 · \(c.location)"; content.sound = .default
                 var components = Dates.calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date); components.timeZone = Dates.calendar.timeZone
                 try? await center.add(UNNotificationRequest(identifier: "\(c.id)-\(date.timeIntervalSince1970)", content: content, trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)))

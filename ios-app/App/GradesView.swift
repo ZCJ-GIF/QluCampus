@@ -5,7 +5,8 @@ import CampusCore
 struct GradesView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.campusTheme) var theme
-    @State private var term = Term.current, showGpa = false
+    @State private var term = Term.current
+    @State private var showGpa = false
     var snapshot: GradeSnapshot? { model.snapshots.first { $0.term == term } }
     var body: some View {
         VStack(spacing: 10) {

@@ -8,8 +8,12 @@ struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) var dismiss
     @Environment(\.campusTheme) var theme
-    @State private var photo: PhotosPickerItem? = nil, importFile = false, unlocking = false
-    @State private var password = "", colorHex = "", confirmLogout = false
+    @State private var photo: PhotosPickerItem? = nil
+    @State private var importFile = false
+    @State private var unlocking = false
+    @State private var password = ""
+    @State private var colorHex = ""
+    @State private var confirmLogout = false
     func binding<T>(_ key: WritableKeyPath<Appearance, T>) -> Binding<T> { Binding(get: { model.appearance[keyPath: key] }, set: { value in model.changeAppearance { $0[keyPath: key] = value } }) }
     var body: some View {
         NavigationStack {

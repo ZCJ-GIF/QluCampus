@@ -32,6 +32,7 @@ public enum Workbook {
             var result: [String] = []
             for (position, cell) in row.all("c").enumerated() {
                 let letters = (cell.attrs["r"] ?? "").prefix { $0.isASCII && $0.isLetter }.uppercased()
+                guard letters.count <= 2 else { throw CampusError.invalid("表格列标识超出范围") }
                 let index = letters.isEmpty ? position : letters.utf8.reduce(0) { $0 * 26 + Int($1) - 64 } - 1
                 guard (0..<80).contains(index) else { throw CampusError.invalid("表格列数过多") }
                 while result.count <= index { result.append("") }

@@ -145,7 +145,7 @@ public enum Grades {
     }
     public static func decimal(_ text: String) -> Decimal? {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard t.range(of: "^\\d+(?:\\.\\d+)?$", options: .regularExpression) != nil else { return nil }; return Decimal(string: t, locale: Locale(identifier: "en_US_POSIX"))
+        guard t.count <= 38, t.range(of: "^\\d+(?:\\.\\d+)?$", options: .regularExpression) != nil else { return nil }; return Decimal(string: t, locale: Locale(identifier: "en_US_POSIX"))
     }
     public static func inputs(_ c: MatchedGrade) -> (Decimal, Decimal)? {
         let values = Set(c.details.map { $0.credits })
