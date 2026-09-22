@@ -65,7 +65,7 @@ buildscript {
             force("com.google.guava:guava:33.6.0-android")
             
             // 强制 Gson (>= 2.10.1)
-            force("com.google.code.gson:gson:2.13.2")
+            force("com.google.code.gson:gson:2.14.0")
 
             dependencySubstitution {
                 substitute(module("commons-io:commons-io")).using(module("commons-io:commons-io:2.22.0"))
