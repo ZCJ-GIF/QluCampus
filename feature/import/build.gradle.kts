@@ -66,7 +66,7 @@ dependencies {
     // 单元测试（纯 JVM 测试）
     testImplementation(libs.junit)
     // 提供真实的 org.json 实现，替换 Android SDK 中只会抛异常的桩。
-    testImplementation("org.json:json:20240303")
+    testImplementation("org.json:json:20260814")
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
 }
