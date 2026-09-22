@@ -7,7 +7,8 @@
 - 专用模拟器安装明确标注 TEST FIXTURE 的外部客户端，建立真实 Android VPN transport，仅路由保留测试网段 192.0.2.0/24。成绩刷新、空教室选项、课表预览均检测到 VPN 并跳过自动拉起；手动打开/返回与关闭自动开关均通过。测试后替身及其 VPN 已卸载。见 027-vpn-handoff.txt 与 027-*-final.png；不代表真实 aTrust 已认证。
 - 最终 APK 包名 com.qlucampus.app、版本 0.2.7/code 9、签名与旧版相同。从 0.2.6 实际 install -r 升级并启动，私有文件标记保留；这不是数据库迁移测试。见 apk-027-verification.txt。
 - 数据库仍为 v8。主机 SQL/Room 结构、历史数据与双工作表 XLSX 中文/小数读取检查通过；data Android 39 项为 0.2.0 历史报告。
-- GitHub 授权成功，公开仓库 https://github.com/ZCJ-GIF/QluCampus 已创建；发布源配置为 main/version.json，安装包和源码通过 Releases 交付。远程下载核验结果随交付目录中的发布报告提供，不把本地单元测试当作远程下载成功证据。
+- GitHub 授权成功，公开仓库 https://github.com/ZCJ-GIF/QluCampus 已创建；发布源配置为 main/version.json，安装包和源码通过 Releases 交付。匿名 HTTPS 读取元数据及下载真实 APK，SHA-256 与本地已签名 APK 一致。
+- 实际联网升级通过：在专用模拟器 0.2.6 中配置公开源后，启动自动发现 0.2.7，应用下载 GitHub 安装包并完成哈希/包名/版本/签名校验；经系统未知来源授权及安装确认升到 0.2.7，保留私有文件标记。使用主机代理访问 GitHub，无学校凭据。报告 027-online-validation.txt 随 GitHub Release 提供；测试脚本首次使用中文按钮定位，而模拟器更新按钮为英文，修正定位后完成，没有修改产品代码或跳过断言。
 - Redmi K80 的真实 aTrust 登录/连接、学校原生课表/成绩/空教室结果仍需实体手机核验。Android 不能可靠识别外部 VPN 所有者，因此其他 VPN 也会跳过自动拉起；界面保留手动打开。
 
 交付目录 E:\Android\releases\0.2.7。APK、对应 GPL 源码与许可一并提供；学校密码、Cookie、真实成绩与签名密钥不进入源码或发布仓库。
