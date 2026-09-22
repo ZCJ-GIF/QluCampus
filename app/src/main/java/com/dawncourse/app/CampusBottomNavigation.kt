@@ -22,16 +22,21 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dawncourse.core.ui.theme.LocalAppSettings
+import com.dawncourse.core.ui.components.glassSurface
+import com.dawncourse.core.ui.components.WallpaperArea
 
 @Composable
 internal fun CampusBottomNavigation(activeRoute: String, gradeUnlocked: Boolean, onNavigate: (String) -> Unit) {
     val tabs = listOf("timetable" to "课表", "grades" to "成绩", "classrooms" to "空教室") +
         if (gradeUnlocked) listOf("grade_details" to "平时成绩") else emptyList()
     val overlay = activeRoute == "timetable"
+    val extend = LocalAppSettings.current.campusAppearance.wallpaperOnNavigation && !LocalAppSettings.current.wallpaperUri.isNullOrBlank()
     Row(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = if (overlay) .76f else 1f))
+            .then(if (extend) Modifier.glassSurface(area = WallpaperArea.NAVIGATION)
+                else Modifier.background(MaterialTheme.colorScheme.surface.copy(alpha = if (overlay) .76f else 1f)))
             .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
             .height(60.dp)
             .selectableGroup(),
@@ -39,7 +44,7 @@ internal fun CampusBottomNavigation(activeRoute: String, gradeUnlocked: Boolean,
     ) {
         tabs.forEach { (route, label) ->
             val selected = activeRoute == route
-            val color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (selected) 1f else .6f)
+            val color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
             Column(
                 Modifier.weight(1f).fillMaxHeight()
                     .selectable(selected = selected, role = Role.Tab, onClick = { onNavigate(route) }),

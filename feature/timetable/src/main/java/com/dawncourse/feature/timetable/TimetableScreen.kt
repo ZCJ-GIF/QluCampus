@@ -328,7 +328,7 @@ internal fun TimetableScreen(
                                     .padding(bottom = bottomOverlayPadding)
                             ) {
                                 // 左侧时间轴 (固定宽度)
-                                TimeColumnIndicator(textColor = timetableTextColor, modifier = Modifier.glassSurface())
+                                TimeColumnIndicator(textColor = timetableTextColor, modifier = Modifier.glassSurface(area = com.dawncourse.core.ui.components.WallpaperArea.HEADER))
 
                                 // 右侧课程网格
                                 if (uiState is TimetableUiState.Success) {

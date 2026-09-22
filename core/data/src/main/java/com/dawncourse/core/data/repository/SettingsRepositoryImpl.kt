@@ -67,6 +67,12 @@ class SettingsRepositoryImpl @Inject constructor(
         val GLASS_ENABLED = booleanPreferencesKey("campus_glass_enabled")
         val GLASS_RADIUS = floatPreferencesKey("campus_glass_radius")
         val GLASS_OPACITY = floatPreferencesKey("campus_glass_opacity")
+        val STYLE = stringPreferencesKey("campus_style")
+        val WALLPAPER_HEADER = booleanPreferencesKey("campus_wallpaper_header")
+        val WALLPAPER_NAVIGATION = booleanPreferencesKey("campus_wallpaper_navigation")
+        val WALLPAPER_COURSES = booleanPreferencesKey("campus_wallpaper_courses")
+        val ADAPTIVE_COURSES = booleanPreferencesKey("campus_adaptive_courses")
+        val WALLPAPER_PANELS = booleanPreferencesKey("campus_wallpaper_panels")
         val HIDE_NOTICE = booleanPreferencesKey("campus_hide_notice")
         /** 是否启用动态取色 */
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
@@ -251,7 +257,13 @@ class SettingsRepositoryImpl @Inject constructor(
                 preferences[PreferencesKeys.FONT_SCALE] ?: 1f, preferences[PreferencesKeys.HIGH_CONTRAST] ?: false,
                 preferences[PreferencesKeys.GLASS_ENABLED] ?: true, preferences[PreferencesKeys.GLASS_RADIUS] ?: 16f,
                 preferences[PreferencesKeys.GLASS_OPACITY] ?: .70f,
-                preferences[PreferencesKeys.FIT_TIMETABLE] ?: true),
+                preferences[PreferencesKeys.FIT_TIMETABLE] ?: true,
+                style = com.dawncourse.core.domain.model.CampusStyle.fromStored(preferences[PreferencesKeys.STYLE]),
+                wallpaperOnHeader = preferences[PreferencesKeys.WALLPAPER_HEADER] ?: true,
+                wallpaperOnNavigation = preferences[PreferencesKeys.WALLPAPER_NAVIGATION] ?: false,
+                wallpaperOnCourses = preferences[PreferencesKeys.WALLPAPER_COURSES] ?: true,
+                adaptiveCourseColors = preferences[PreferencesKeys.ADAPTIVE_COURSES] ?: true,
+                wallpaperOnPanels = preferences[PreferencesKeys.WALLPAPER_PANELS] ?: true),
             hideWelcomeNotice = preferences[PreferencesKeys.HIDE_NOTICE] ?: false,
             transparency = transparency,
             fontStyle = fontStyle,
@@ -300,6 +312,12 @@ class SettingsRepositoryImpl @Inject constructor(
         this[PreferencesKeys.GLASS_ENABLED] = value.glassEnabled
         this[PreferencesKeys.GLASS_RADIUS] = value.glassRadius.coerceIn(0f, 32f)
         this[PreferencesKeys.GLASS_OPACITY] = value.glassOpacity.coerceIn(.4f, 1f)
+        this[PreferencesKeys.STYLE] = value.style.name
+        this[PreferencesKeys.WALLPAPER_HEADER] = value.wallpaperOnHeader
+        this[PreferencesKeys.WALLPAPER_NAVIGATION] = value.wallpaperOnNavigation
+        this[PreferencesKeys.WALLPAPER_COURSES] = value.wallpaperOnCourses
+        this[PreferencesKeys.ADAPTIVE_COURSES] = value.adaptiveCourseColors
+        this[PreferencesKeys.WALLPAPER_PANELS] = value.wallpaperOnPanels
     }
     override suspend fun setCampusAppearance(value: com.dawncourse.core.domain.model.CampusAppearance) {
         val previous = settings.first().campusAppearance

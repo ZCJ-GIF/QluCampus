@@ -33,6 +33,7 @@ dependencies {
     implementation(libs.material.icons.extended)
     implementation(libs.palette.ktx)
     implementation(libs.coil.compose)
+    testImplementation(libs.junit)
 
     debugImplementation(libs.ui.tooling)
     debugImplementation(libs.ui.test.manifest)

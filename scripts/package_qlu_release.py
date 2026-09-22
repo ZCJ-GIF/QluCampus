@@ -52,7 +52,7 @@ for source, target in copies.items():
     destination = OUT / target
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(ROOT / source, destination)
-for module in ("core/domain", "core/data", "feature/grades", "feature/timetable", "feature/widget", "feature/settings", "feature/update"):
+for module in ("core/domain", "core/data", "core/ui", "feature/grades", "feature/timetable", "feature/widget", "feature/settings", "feature/update"):
     destination = OUT / "reports" / module.replace("/", "-")
     destination.mkdir(parents=True, exist_ok=True)
     for path in (ROOT / module / "build/test-results/testDebugUnitTest").glob("TEST-*.xml"):
@@ -74,6 +74,8 @@ if VERSION == "0.2.6":
     release_logs = ("build-026-vpn.log", "ui-026-vpn.log", "build-026-final.log", "026-atrust-handoff.txt", "apk-026-verification.txt")
 if VERSION == "0.2.7":
     release_logs = ("build-027-network.log", "ui-027-network.log", "build-027-release.log", "027-vpn-handoff.txt", "apk-027-verification.txt")
+if VERSION == "0.2.8":
+    release_logs = ("build-028-styles.log", "test-028-styles.log", "ui-028-styles.log", "apk-028-verification.txt")
 for name in release_logs:
     shutil.copy2(ROOT.parent / "logs" / name, OUT / "reports" / name)
 small_screen_log = ROOT.parent / "logs" / f"ui-{tag}-small-screen.log"
@@ -83,7 +85,7 @@ for path in (ROOT.parent / "logs").glob(f"{tag}-*-ui.xml"):
     shutil.copy2(path, OUT / "reports" / path.name)
 for path in (ROOT.parent / "logs").glob(VERSION.replace(".", "") + "-*-final.png"):
     shutil.copy2(path, OUT / "reports" / path.name)
-for module in ("app", "feature/settings", "feature/timetable", "feature/widget", "feature/update"):
+for module in ("app", "core/ui", "feature/settings", "feature/timetable", "feature/widget", "feature/update"):
     shutil.copy2(ROOT / module / "build/reports/lint-results-debug.txt", OUT / "reports" / (module.replace("/", "-") + "-lint.txt"))
 
 (OUT / "先读我.md").write_text(f"""# 齐鲁课表 {VERSION} 测试版
@@ -108,6 +110,7 @@ for module in ("app", "feature/settings", "feature/timetable", "feature/widget",
 13. 默认五大节为 08:30–10:05、10:20–11:55、14:00–15:35、15:50–17:25、18:25–19:55，每小节 45 分钟，白天小节间休息 5 分钟，晚上不休息。以前手动设过作息的，可在「设置 → 节次时间设置 → 恢复默认作息（五大节）」应用；默认未设定第十一节之后的时间。
 14. 已启用 https://github.com/ZCJ-GIF/QluCampus 的独立发布源。先手动覆盖安装本版，之后打开应用会检查新版本（最多每 6 小时一次）；「设置 → 检查更新」可手动检查、关闭自动检查或修改发布源。曾显式清空来源的用户需要填入此仓库链接。下载完成校验后由系统确认安装，不会静默安装。
 15. 成绩、空教室和学校课表导入默认开启「查询前打开 aTrust」，先检测当前 VPN 或学校网址是否可访问，已有连接则直接继续；否则打开 aTrust，返回后继续一次。Android 无法可靠识别 VPN 所有者，其他 VPN 也会跳过；可点击「手动打开 aTrust」。未安装/无法打开时可取消或直接继续；开关可关闭。查看缓存、导出、GPA 和确认保存不触发。aTrust 的登录和 VPN 连接仍需本人完成，网络检测不代表学校认证有效。
+16. 「设置 → 配色风格与背景」选择云雾蓝、鼠尾草、奶油杏、雾紫或原有配色；可独立将图片延伸到顶栏日期栏、底部导航、课程卡片和设置/查询面板。课程颜色适应背景默认开启，按背景调色并保护文字与地点的对比度；高对比度和非本周灰色规则保留。风格只改变显示，手工保存的课程原色不被改写。
 
 本次构建、单元与 Android 15 无窗口测试、桌面组件、签名检查、独立 XLSX 读取及迁移结果见 `QLU-VALIDATION.md`。报告和截图使用合成数据；真实账号下已验证空教室官方网页查询；Android 原生课表、总评、平时成绩及空教室结果仍需在 VPN 可用时登录核验。不能把“学校联调待验证”理解为已通过学校接口验收。
 

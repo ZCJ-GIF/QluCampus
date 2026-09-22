@@ -19,6 +19,28 @@ import org.junit.Test
 class BackupRestoreGateTest {
     private val gson = Gson()
 
+    @Test fun legacyAppearanceUsesNewDefaults() {
+        val settings = gson.fromJson("""{"campusAppearance":{"fontScale":1.2,"glassOpacity":0.5}}""", AppSettings::class.java)
+        assertEquals(com.dawncourse.core.domain.model.CampusStyle.CLASSIC, settings.campusAppearance.style)
+        assertTrue(settings.campusAppearance.adaptiveCourseColors)
+        assertFalse(settings.campusAppearance.wallpaperOnNavigation)
+        assertEquals(1.2f, settings.campusAppearance.fontScale, .001f)
+    }
+
+    @Test fun appearanceSettingsRoundTripThroughBackup() {
+        val expected = AppSettings(campusAppearance = com.dawncourse.core.domain.model.CampusAppearance(
+            style = com.dawncourse.core.domain.model.CampusStyle.CREAM, wallpaperOnHeader = false,
+            wallpaperOnNavigation = true, wallpaperOnCourses = false, wallpaperOnPanels = false, adaptiveCourseColors = false))
+        assertEquals(expected, gson.fromJson(gson.toJson(expected), AppSettings::class.java))
+    }
+
+    @Test fun unknownBackupStyleFailsBeforeCommit() = runBlocking {
+        val settings = gson.fromJson("""{"campusAppearance":{"style":"FUTURE_UNKNOWN"}}""", AppSettings::class.java)
+        var committed = false
+        assertTrue(BackupRestoreGate.validateThenCommit(validPayload(settings = settings)) { committed = true }.isFailure)
+        assertFalse(committed)
+    }
+
     @Test
     fun jsonNullSettingsFailsBeforeCommit() = runBlocking {
         val backup = gson.fromJson(

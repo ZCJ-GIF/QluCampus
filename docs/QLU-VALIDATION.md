@@ -1,4 +1,19 @@
-# 齐鲁课表 0.2.7 验证记录
+# 齐鲁课表 0.2.8 验证记录
+
+2026-09-21，versionCode 10。构建、Android 15 / API 35 模拟器均在 E 盘后台运行，不占用前台。
+
+- 最终 APK 构建成功。core:ui 新增 7 项测试通过：四套色板的浅/深语义色、明暗混合图片下的课程文字对比（至少 4.5）、关闭自适应、无壁纸、灰色文字区间、非法设置名及壁纸动态主色。data 新增 3 项测试通过：旧外观备份默认值、新字段备份往返、未知备份风格在写入前拒绝。
+- 本轮执行 core:ui、data、settings、timetable 单元任务（含 up-to-date）；八模块通过报告累计 451 项，其他模块历史报告不计为本轮重新运行。app/settings/core:ui Lint 均 0 错误，分别 11/16/7 条建议或警告。
+- 综合 Android UI 1 项通过：四套风格切换、五个外观开关的实际交互/持久化、背景延伸和深色模式截图；保留原有 GPA、成绩锁、更新设置、日历、周课表、aTrust 帮助和桌面组件的回归断言。首次定位到 Switch 的说明子节点而非 checked 父节点，改用实际可选中语义后通过，未移除断言。
+- 已人工查看模拟器截图：背景延伸到顶栏、日期/时间栏、课程和底部导航；两种主题下课程名、地点均可读。合成条纹图用于检验复杂背景，未使用个人照片或真实学校数据。截图 028-style-*-final.png、028-background-*-final.png。
+- APK 包名 com.qlucampus.app、versionName 0.2.8、versionCode 10，签名与 0.2.7 相同。实际 install -r 覆盖升级，私有文件标记保留并启动；不是数据库迁移测试。数据库仍为 v8，主机 SQL/Room 与双表 XLSX 读取检查通过。
+- 日志：build-028-styles.log、test-028-styles.log、ui-028-styles.log、apk-028-verification.txt。data Android 39 项仍是 0.2.0 历史报告；本轮没有重新验证手机 aTrust 或学校原生接口。
+
+交付目录 E:\Android\releases\0.2.8，附对应 GPL 源码、许可、校验文件及后台报告。公开更新仍使用 ZCJ-GIF/QluCampus；先上传 Release 资产，再发布新版本元数据。
+
+---
+
+# 齐鲁课表 0.2.7 验证记录（历史）
 
 2026-09-21，versionCode 9。E 盘构建及 Android 15 / API 35 专用无窗口模拟器 QluCampusTest35（5562）后台测试。
 

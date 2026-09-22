@@ -33,6 +33,7 @@ fun PreferenceCategory(
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
+                .glassSurface(RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp)
         )
         Card(
             modifier = Modifier.fillMaxWidth().glassSurface(RoundedCornerShape(16.dp)),

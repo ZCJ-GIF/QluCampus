@@ -2,6 +2,7 @@
 package com.dawncourse.feature.timetable
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -17,6 +18,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import com.dawncourse.core.domain.model.Course
 import com.dawncourse.core.ui.components.glassSurface
+import com.dawncourse.core.ui.components.rememberCourseSurface
+import com.dawncourse.core.ui.components.WallpaperArea
 import com.dawncourse.core.ui.theme.LocalAppSettings
 import com.dawncourse.core.ui.util.CourseColorUtils
 import com.dawncourse.core.ui.util.LocalCoursePalette
@@ -34,8 +37,9 @@ internal fun compactTextHeight(measurer: TextMeasurer, text: String, style: Text
 @Composable
 internal fun CompactCourseCard(course: Course, current: Boolean, onClick: () -> Unit) {
     val settings = LocalAppSettings.current
-    val background = CourseColorUtils.getTimetableColor(course, current, settings.campusAppearance.highContrast, LocalCoursePalette.current)
-    val foreground = CourseColorUtils.getBestContentColor(background)
+    val colors = rememberCourseSurface(course, current)
+    val background = colors.background
+    val foreground = colors.foreground
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
     val nameBase = MaterialTheme.typography.bodyMedium
@@ -44,7 +48,9 @@ internal fun CompactCourseCard(course: Course, current: Boolean, onClick: () -> 
     val status = compactStatus(course, current)
     val shape = RoundedCornerShape(settings.cardCornerRadius.coerceAtMost(6).dp)
     BoxWithConstraints(Modifier.fillMaxSize().padding(1.dp)
-        .glassSurface(shape, background, forceOpaque = settings.campusAppearance.highContrast || !current)
+        .glassSurface(shape, background, forceOpaque = settings.campusAppearance.highContrast || !current,
+            area = WallpaperArea.COURSE, opacity = colors.opacity)
+        .then(if (colors.outlined) Modifier.border(.7.dp, foreground.copy(alpha = .23f), shape) else Modifier)
         .clickable(onClick = onClick)) {
         val width = with(density) { (maxWidth - 6.dp).toPx().toInt().coerceAtLeast(1) }
         val height = with(density) { (maxHeight - 8.dp).toPx() }

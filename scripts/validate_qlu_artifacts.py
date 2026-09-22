@@ -69,7 +69,7 @@ def verify_xlsx():
 
 def verify_junit():
     result = {}
-    for module in ("core/domain", "core/data", "feature/grades", "feature/timetable", "feature/widget", "feature/settings", "feature/update"):
+    for module in ("core/domain", "core/data", "core/ui", "feature/grades", "feature/timetable", "feature/widget", "feature/settings", "feature/update"):
         counts = dict(tests=0, failures=0, errors=0, skipped=0)
         files = list((ROOT / module / "build/test-results/testDebugUnitTest").glob("TEST-*.xml"))
         assert files, module

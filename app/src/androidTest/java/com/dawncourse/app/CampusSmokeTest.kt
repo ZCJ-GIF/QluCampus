@@ -201,8 +201,53 @@ class CampusSmokeTest {
                 device.swipe(device.displayWidth / 2, device.displayHeight / 3, device.displayWidth / 2, device.displayHeight * 3 / 4, 18)
                 android.os.SystemClock.sleep(200)
             }
+            // New styles change presentation only; preferences survive repository recreation.
+            for (style in com.dawncourse.core.domain.model.CampusStyle.entries.filter { it != com.dawncourse.core.domain.model.CampusStyle.CLASSIC }) {
+                runBlocking {
+                    settings.setThemeMode(com.dawncourse.core.domain.model.AppThemeMode.LIGHT)
+                    settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(style = style))
+                }
+                android.os.SystemClock.sleep(600)
+                assertNotNull(device.findObject(By.text("高分子材料科学与工程基础")))
+                shot("028-style-${style.name.lowercase()}.png")
+            }
             runBlocking {
                 settings.setWallpaperUri(android.net.Uri.fromFile(source).toString())
+                settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(
+                    style = com.dawncourse.core.domain.model.CampusStyle.SAGE, glassOpacity = .4f,
+                    wallpaperOnHeader = true, wallpaperOnNavigation = true, wallpaperOnCourses = true,
+                    wallpaperOnPanels = true, adaptiveCourseColors = true))
+            }
+            android.os.SystemClock.sleep(1200)
+            shot("028-background-all-areas.png")
+            device.wait(Until.findObject(By.desc("设置")), 10000).click()
+            scrollTo(By.textStartsWith("云雾蓝")).click()
+            android.os.SystemClock.sleep(400)
+            assertEquals(com.dawncourse.core.domain.model.CampusStyle.MIST, runBlocking { settings.settings.first().campusAppearance.style })
+            shot("028-style-settings.png")
+            val appearanceToggles = listOf("课表顶栏与日期栏", "底部导航栏", "课程卡片", "设置与查询面板", "课程颜色适应背景")
+            fun checkedNode(node: androidx.test.uiautomator.UiObject2) =
+                generateSequence(node) { it.parent }.firstOrNull { it.isCheckable }
+                    ?: requireNotNull(node.findObject(By.checkable(true)))
+            appearanceToggles.forEach { label ->
+                val toggle = scrollTo(By.desc(label))
+                assertTrue("$label 应开启", checkedNode(toggle).isChecked)
+                toggle.click()
+                android.os.SystemClock.sleep(200)
+                assertFalse("$label 应关闭", checkedNode(requireNotNull(device.findObject(By.desc(label)))).isChecked)
+            }
+            val persistedOff = runBlocking { com.dawncourse.core.data.repository.SettingsRepositoryImpl(context).settings.first().campusAppearance }
+            assertFalse(persistedOff.wallpaperOnHeader || persistedOff.wallpaperOnNavigation || persistedOff.wallpaperOnCourses || persistedOff.wallpaperOnPanels || persistedOff.adaptiveCourseColors)
+            appearanceToggles.forEach { label -> scrollTo(By.desc(label)).click(); android.os.SystemClock.sleep(200) }
+            val persistedOn = runBlocking { com.dawncourse.core.data.repository.SettingsRepositoryImpl(context).settings.first().campusAppearance }
+            assertTrue(persistedOn.wallpaperOnHeader && persistedOn.wallpaperOnNavigation && persistedOn.wallpaperOnCourses && persistedOn.wallpaperOnPanels && persistedOn.adaptiveCourseColors)
+            device.pressBack()
+            runBlocking { settings.setThemeMode(com.dawncourse.core.domain.model.AppThemeMode.DARK) }
+            android.os.SystemClock.sleep(600)
+            shot("028-background-dark.png")
+            runBlocking {
+                settings.setThemeMode(com.dawncourse.core.domain.model.AppThemeMode.LIGHT)
+                settings.setCampusAppearance(com.dawncourse.core.domain.model.CampusAppearance())
                 settings.generateBlurredWallpaper(settings.settings.first().wallpaperUri)
                 settings.setCampusAppearance(settings.settings.first().campusAppearance.copy(highContrast = true))
             }

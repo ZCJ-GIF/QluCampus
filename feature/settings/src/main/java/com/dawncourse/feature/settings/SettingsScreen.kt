@@ -276,6 +276,10 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            CampusStyleSettings(settings, viewModel::setCampusAppearance, onPickWallpaper = {
+                try { wallpaperLauncher.launch(arrayOf("image/*")) }
+                catch (_: Exception) { Toast.makeText(context, "无法打开图片选择器", Toast.LENGTH_SHORT).show() }
+            })
             CampusAppearanceSettings(settings.campusAppearance, viewModel::setCampusAppearance)
             viewModel.appearanceError?.let { error -> Text(error, color = MaterialTheme.colorScheme.error); TextButton(onClick = viewModel::clearAppearanceError) { Text("关闭提示") } }
             TimetableSection(
@@ -514,11 +518,15 @@ private fun TimetableSection(
 private fun AdvancedCourseCardPreview(settings: AppSettings) {
     Text("视觉效果预览", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.labelMedium)
     val shape = RoundedCornerShape(settings.cardCornerRadius.dp)
-    val bg = if (settings.campusAppearance.highContrast) Color(0xFF0057B8) else MaterialTheme.colorScheme.primaryContainer
-    val fg = com.dawncourse.core.ui.util.CourseColorUtils.getBestContentColor(bg)
+    val colors = com.dawncourse.core.ui.components.rememberCourseSurface(
+        com.dawncourse.core.domain.model.Course(name = "示例课程", dayOfWeek = 1, startSection = 1,
+            duration = 2, startWeek = 1, endWeek = 20), true)
+    val bg = colors.background
+    val fg = colors.foreground
     com.dawncourse.core.ui.components.CampusBackdrop(Modifier.fillMaxWidth().height(200.dp).padding(horizontal = 16.dp).clip(RoundedCornerShape(24.dp))) {
         Column(Modifier.align(Alignment.Center).width(140.dp)
-            .glassSurface(shape, bg, forceOpaque = settings.campusAppearance.highContrast).padding(12.dp)) {
+            .glassSurface(shape, bg, forceOpaque = settings.campusAppearance.highContrast,
+                area = com.dawncourse.core.ui.components.WallpaperArea.COURSE, opacity = colors.opacity).padding(12.dp)) {
             if (settings.showCourseIcons) Icon(Icons.Default.Book, null, tint = fg, modifier = Modifier.size(16.dp))
             Text("示例课程", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = fg)
             Text("工程楼 A-301", fontSize = 11.sp, color = fg)
@@ -567,7 +575,7 @@ private fun AppearanceSection(
         HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp))
         SwitchSetting(
             title = "动态取色 (Material You)",
-            description = "根据壁纸自动生成主题色",
+            description = "选择“原有配色”时，根据壁纸或系统自动生成主题色",
             icon = { Icon(Icons.Default.Palette, null) },
             checked = settings.dynamicColor,
             onCheckedChange = { viewModel.setDynamicColor(it) },

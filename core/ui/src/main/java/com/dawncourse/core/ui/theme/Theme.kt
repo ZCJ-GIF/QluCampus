@@ -52,6 +52,7 @@ val LocalAppSettings = staticCompositionLocalOf { AppSettings() }
 // 壁纸动态取色的对比色（用于主页面顶栏等需要与背景形成对比的图标/文字）
 // 壁纸动态取色的对比色（仅用于需要与背景形成对比的图标/文字）
 val LocalWallpaperContrastColor = staticCompositionLocalOf { Color.Unspecified }
+val LocalWallpaperSeed = staticCompositionLocalOf<Color?> { null }
 
 /**
  * 应用全局主题 Composable
@@ -78,17 +79,20 @@ fun DawnTheme(
     var wallpaperContrastColor by remember(appSettings.dynamicColor, appSettings.wallpaperUri, darkTheme) {
         mutableStateOf<Color?>(null)
     }
+    var wallpaperSeed by remember(appSettings.wallpaperUri, darkTheme) { mutableStateOf<Color?>(null) }
 
     // 壁纸变化或主题模式变化时重新计算动态配色
     LaunchedEffect(appSettings.dynamicColor, appSettings.wallpaperUri, darkTheme) {
-        if (!appSettings.dynamicColor || appSettings.wallpaperUri.isNullOrBlank()) {
+        if (appSettings.wallpaperUri.isNullOrBlank()) {
             wallpaperColorScheme = null
             wallpaperContrastColor = null
+            wallpaperSeed = null
             return@LaunchedEffect
         }
         val result = generateColorSchemeFromWallpaper(context, appSettings.wallpaperUri, darkTheme)
         wallpaperColorScheme = result?.first
         wallpaperContrastColor = result?.second
+        wallpaperSeed = result?.third
     }
 
     // 内置回退配色
@@ -112,6 +116,8 @@ fun DawnTheme(
 
     // 颜色策略：优先壁纸取色，其次系统动态取色，最后回退到默认主题
     val colorScheme = when {
+        appSettings.campusAppearance.style != com.dawncourse.core.domain.model.CampusStyle.CLASSIC ->
+            softColorScheme(campusStyleColors(appSettings.campusAppearance.style).seed, darkTheme)
         appSettings.dynamicColor && wallpaperColorScheme != null -> wallpaperColorScheme!!
         appSettings.dynamicColor && systemDynamicScheme != null -> systemDynamicScheme
         else -> fallbackScheme
@@ -138,7 +144,8 @@ fun DawnTheme(
         androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(
             androidx.compose.ui.platform.LocalDensity.current.density,
             androidx.compose.ui.platform.LocalDensity.current.fontScale * appSettings.campusAppearance.fontScale.coerceIn(.85f, 1.5f)),
-        LocalWallpaperContrastColor provides resolvedTopBarIconColor
+        LocalWallpaperContrastColor provides resolvedTopBarIconColor,
+        LocalWallpaperSeed provides wallpaperSeed
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
@@ -160,11 +167,12 @@ private suspend fun generateColorSchemeFromWallpaper(
     context: Context,
     wallpaperUri: String?,
     darkTheme: Boolean
-): Pair<ColorScheme, Color>? {
+): Triple<ColorScheme, Color, Color>? {
     if (wallpaperUri.isNullOrBlank()) return null
     // 使用低分辨率位图取色，减少内存与计算开销
     val bitmap = loadPaletteBitmap(context, wallpaperUri) ?: return null
-    val palette = Palette.from(bitmap).maximumColorCount(8).generate()
+    val palette = withContext(Dispatchers.IO) { Palette.from(bitmap).maximumColorCount(8).generate() }
+    bitmap.recycle()
     val dominant = palette.getDominantColor(0)
     if (dominant == 0) return null
     // HSL 调整：降低饱和度并限定亮度区间，避免过亮或过暗
@@ -179,14 +187,10 @@ private suspend fun generateColorSchemeFromWallpaper(
     val primary = Color(ColorUtils.HSLToColor(floatArrayOf(hsl[0], saturation, lightness)))
     val secondary = Color(ColorUtils.HSLToColor(floatArrayOf((hsl[0] + 20f) % 360f, saturation * 0.7f, lightness)))
     val tertiary = Color(ColorUtils.HSLToColor(floatArrayOf((hsl[0] + 40f) % 360f, saturation * 0.5f, lightness)))
-    val scheme = if (darkTheme) {
-        darkColorScheme(primary = primary, secondary = secondary, tertiary = tertiary)
-    } else {
-        lightColorScheme(primary = primary, secondary = secondary, tertiary = tertiary)
-    }
+    val scheme = softColorScheme(primary, darkTheme)
     // 对比色：从固定 6 色中挑选与壁纸主色对比最强的颜色
     val contrastColor = pickBestContrastColor(dominant)
-    return scheme to contrastColor
+    return Triple(scheme, contrastColor, Color(dominant))
 }
 
 /**

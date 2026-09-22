@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import com.dawncourse.core.ui.components.glassSurface
+import com.dawncourse.core.ui.components.rememberCourseSurface
+import com.dawncourse.core.ui.components.WallpaperArea
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -131,7 +133,7 @@ fun TimetableTopBar(
     val actionSize = if (maxWidth < 380.dp) 32.dp else 36.dp
     val dateSize = if (maxWidth < 350.dp) 18.sp else 24.sp
     TopAppBar(
-        modifier = Modifier.glassSurface(),
+        modifier = Modifier.glassSurface(area = WallpaperArea.HEADER),
         windowInsets = TopAppBarDefaults.windowInsets,
         expandedHeight = if (compact) 72.dp else 64.dp,
         title = {
@@ -376,7 +378,7 @@ fun WeekHeader(
         val monday = semesterStartDate?.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
             ?.plusWeeks((displayedWeek - 1).toLong())
         val today = LocalDate.now()
-        Row(modifier.fillMaxWidth().height(LocalWeekHeaderHeight.current).glassSurface(), verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier.fillMaxWidth().height(LocalWeekHeaderHeight.current).glassSurface(area = WallpaperArea.HEADER), verticalAlignment = Alignment.CenterVertically) {
             Text(monday?.let { "${it.monthValue}\n月" }.orEmpty(), Modifier.width(LocalTimeColumnWidth.current),
                 textAlign = TextAlign.Center, fontSize = 12.sp, lineHeight = 15.sp, color = textColor)
             repeat(if (settings.showWeekend) 7 else 5) { index ->
@@ -407,7 +409,7 @@ fun WeekHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .glassSurface()
+            .glassSurface(area = WallpaperArea.HEADER)
             .padding(start = LocalTimeColumnWidth.current)
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -710,10 +712,13 @@ fun CourseCard(
         return
     }
     val highContrast = settings.campusAppearance.highContrast
-    val rawColor = CourseColorUtils.getTimetableColor(course, isCurrentWeek, highContrast, com.dawncourse.core.ui.util.LocalCoursePalette.current)
-    val textColor = CourseColorUtils.getBestContentColor(rawColor)
+    val colors = rememberCourseSurface(course, isCurrentWeek)
+    val rawColor = colors.background
+    val textColor = colors.foreground
     Column(Modifier.fillMaxSize().padding(2.dp)
-        .glassSurface(RoundedCornerShape(settings.cardCornerRadius.dp), rawColor, forceOpaque = highContrast || !isCurrentWeek)
+        .glassSurface(RoundedCornerShape(settings.cardCornerRadius.dp), rawColor, forceOpaque = highContrast || !isCurrentWeek,
+            area = WallpaperArea.COURSE, opacity = colors.opacity)
+        .then(if (colors.outlined) Modifier.border(.7.dp, textColor.copy(alpha = .23f), RoundedCornerShape(settings.cardCornerRadius.dp)) else Modifier)
         .clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         if (settings.showCourseIcons) Icon(Icons.Default.Book, null, tint = textColor, modifier = Modifier.size(16.dp))
         Text(course.name, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 15.sp), color = textColor)

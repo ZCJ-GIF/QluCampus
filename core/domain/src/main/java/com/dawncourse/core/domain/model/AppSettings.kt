@@ -122,8 +122,27 @@ data class AppSettings(
 data class CampusAppearance(
     val fontScale: Float = 1f, val highContrast: Boolean = false,
     val glassEnabled: Boolean = true, val glassRadius: Float = 16f, val glassOpacity: Float = .70f,
-    val fitTimetableToScreen: Boolean = true
+    val fitTimetableToScreen: Boolean = true,
+    val style: CampusStyle = CampusStyle.CLASSIC,
+    val wallpaperOnHeader: Boolean = true,
+    val wallpaperOnNavigation: Boolean = false,
+    val wallpaperOnCourses: Boolean = true,
+    val adaptiveCourseColors: Boolean = true,
+    val wallpaperOnPanels: Boolean = true
 )
+
+/** Stable names are persisted; new presets never overwrite saved course colors. */
+enum class CampusStyle(val title: String, val description: String) {
+    CLASSIC("原有配色", "保留原来的颜色与动态取色设置"),
+    MIST("云雾蓝", "清透灰蓝 · 安静柔和"),
+    SAGE("鼠尾草", "灰绿与米白 · 自然舒缓"),
+    CREAM("奶油杏", "暖白与浅杏 · 温润耐看"),
+    LILAC("雾紫", "淡紫与灰粉 · 柔和清雅");
+
+    companion object {
+        fun fromStored(value: String?): CampusStyle = entries.firstOrNull { it.name == value } ?: CLASSIC
+    }
+}
 
 /**
  * 节次时间数据类

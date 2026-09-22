@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.*
 import com.dawncourse.core.domain.model.WallpaperMode
 import com.dawncourse.core.ui.theme.LocalAppSettings
+import com.dawncourse.core.ui.util.ReadableColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
@@ -72,19 +73,35 @@ fun CampusBackdrop(modifier: Modifier = Modifier, content: @Composable BoxScope.
     }
 }
 
-fun Modifier.glassSurface(shape: Shape = RectangleShape, tint: Color = Color.Unspecified, forceOpaque: Boolean = false): Modifier = composed {
+enum class WallpaperArea { HEADER, NAVIGATION, COURSE, PANEL }
+
+fun Modifier.glassSurface(shape: Shape = RectangleShape, tint: Color = Color.Unspecified, forceOpaque: Boolean = false,
+    area: WallpaperArea = WallpaperArea.PANEL, opacity: Float? = null): Modifier = composed {
     val backdrop = LocalBackdrop.current
     val settings = LocalAppSettings.current
     val appearance = settings.campusAppearance
     val overlay = if (tint == Color.Unspecified) MaterialTheme.colorScheme.surface else tint
+    val selected = when (area) {
+        WallpaperArea.HEADER -> appearance.wallpaperOnHeader
+        WallpaperArea.NAVIGATION -> appearance.wallpaperOnNavigation
+        WallpaperArea.COURSE -> appearance.wallpaperOnCourses
+        WallpaperArea.PANEL -> appearance.wallpaperOnPanels
+    }
+    // Bar labels/icons keep the theme's foreground; protect them even over a busy image.
+    val minimumOverlay = if (area != WallpaperArea.COURSE) maxOf(
+        ReadableColors.safeOpacity(overlay, MaterialTheme.colorScheme.onSurface, .4f),
+        ReadableColors.safeOpacity(overlay, MaterialTheme.colorScheme.onSurfaceVariant, .4f),
+        ReadableColors.safeOpacity(overlay, MaterialTheme.colorScheme.primary, .4f)
+    ) else 0f
+    val overlayOpacity = maxOf(opacity ?: appearance.glassOpacity, minimumOverlay).coerceIn(0f, 1f)
     var position by remember { mutableStateOf(Offset.Zero) }
     clip(shape).onGloballyPositioned { position = it.positionInRoot() - backdrop.origin }.drawWithContent {
-        val glass = appearance.glassEnabled && !forceOpaque && backdrop.image != null
-        if (glass) (if (appearance.glassRadius > 0) backdrop.blurred ?: backdrop.image else backdrop.image)?.let {
+        val extended = selected && !forceOpaque && backdrop.image != null
+        if (extended) (if (appearance.glassEnabled && appearance.glassRadius > 0) backdrop.blurred ?: backdrop.image else backdrop.image)?.let {
             paintWallpaper(it, backdrop.size, position, settings.wallpaperMode, settings.backgroundBrightness)
             drawRect(overlay.copy(alpha = settings.transparency))
         }
-        drawRect(overlay.copy(alpha = if (glass) appearance.glassOpacity else 1f))
+        drawRect(overlay.copy(alpha = if (extended) overlayOpacity else 1f))
         drawContent()
     }
 }
